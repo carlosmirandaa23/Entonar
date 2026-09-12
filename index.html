@@ -134,6 +134,13 @@
       </div>
     </div>
     <div class="row">
+      <div><label for="selStep">Paso del barrido</label><small>Cromático recorre todas las notas; por tonos va al doble de rápido.</small></div>
+      <select id="selStep">
+        <option value="1" selected>Semitono</option>
+        <option value="2">Tono</option>
+      </select>
+    </div>
+    <div class="row">
       <div><label>Corregir octava</label><small>Si la medición quedó una octava arriba o abajo de lo que realmente cantas.</small></div>
       <div style="display:flex;gap:8px">
         <button class="mini" id="tessDown">8vb</button>
@@ -237,7 +244,7 @@
     clef:"treble", clefMode:"auto", extra:1, acc:"nat",
     tol:35, holdMs:1000, showName:true, autoTone:false,
     tess:null, tessMode:"detect", measLo:null, measHi:null,
-    anchor:null, probe:null, probeT0:0, scanDir:-1, next:null, pauseTitle:"", refining:false,
+    anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -475,7 +482,7 @@
     drawStaff(shown, cl, {progress:progress||0, voiceCents:cents, tuned:tuned, oct8:OCT8[String(k)]||""});
   }
 
-  const SCAN_STEP = 2, SCAN_HOLD = 700, SCAN_TIMEOUT = 14000, FLOOR = 31, CEIL = 88;
+  const SCAN_HOLD = 700, SCAN_TIMEOUT = 14000, FLOOR = 31, CEIL = 88;
 
   function beginMeasure(){
     S.mode = "anchor"; S.measLo = null; S.measHi = null; S.retry = false;
@@ -559,7 +566,7 @@
     S.mode = S.next;
     S.scanDir = bajando ? -1 : 1;
     S.refining = false;
-    setProbe((bajando ? S.measLo : S.measHi) + S.scanDir*SCAN_STEP, ts);
+    setProbe((bajando ? S.measLo : S.measHi) + S.scanDir*S.scanStep, ts);
   }
 
   function setProbe(m, ts){
@@ -619,13 +626,13 @@
     if(navigator.vibrate) navigator.vibrate(25);
     if(S.scanDir < 0) S.measLo = S.probe; else S.measHi = S.probe;
     if(S.refining){ S.refining = false; finishDir(); return; }
-    const next = S.probe + S.scanDir*SCAN_STEP;
+    const next = S.probe + S.scanDir*S.scanStep;
     if(next < FLOOR || next > CEIL){ scanEnd(); return; }
     setProbe(next, ts);
   }
 
   function scanEnd(){
-    if(!S.refining){
+    if(!S.refining && S.scanStep > 1){
       const cand = (S.scanDir<0 ? S.measLo : S.measHi) + S.scanDir;
       if(cand >= FLOOR && cand <= CEIL){
         S.refining = true;
@@ -886,6 +893,7 @@
   bindSel("selClef","clefMode",null,true);
   bindSel("selRange","extra",Number,true);
   bindSel("selAcc","acc",null,true);
+  bindSel("selStep","scanStep",Number);
   bindSel("selTol","tol",Number);
   bindSel("selHold","holdMs",Number);
 
