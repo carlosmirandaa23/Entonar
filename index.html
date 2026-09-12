@@ -237,7 +237,7 @@
     clef:"treble", clefMode:"auto", extra:1, acc:"nat",
     tol:35, holdMs:1000, showName:true, autoTone:false,
     tess:null, tessMode:"detect", measLo:null, measHi:null,
-    anchor:null, probe:null, probeT0:0, scanDir:-1, next:null, pauseTitle:"",
+    anchor:null, probe:null, probeT0:0, scanDir:-1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -537,6 +537,7 @@
     }
     S.mode = S.next;
     S.scanDir = bajando ? -1 : 1;
+    S.refining = false;
     setProbe((bajando ? S.measLo : S.measHi) + S.scanDir*SCAN_STEP, ts);
   }
 
@@ -596,12 +597,28 @@
   function scanOk(ts){
     if(navigator.vibrate) navigator.vibrate(25);
     if(S.scanDir < 0) S.measLo = S.probe; else S.measHi = S.probe;
+    if(S.refining){ S.refining = false; finishDir(); return; }
     const next = S.probe + S.scanDir*SCAN_STEP;
     if(next < FLOOR || next > CEIL){ scanEnd(); return; }
     setProbe(next, ts);
   }
 
   function scanEnd(){
+    if(!S.refining){
+      const cand = (S.scanDir<0 ? S.measLo : S.measHi) + S.scanDir;
+      if(cand >= FLOOR && cand <= CEIL){
+        S.refining = true;
+        setProbe(cand, performance.now());
+        $("msgMain").textContent = "Una última: " + midiLabel(cand);
+        $("msgSub").textContent = "Medio tono más, para afinar el límite.";
+        return;
+      }
+    }
+    S.refining = false;
+    finishDir();
+  }
+
+  function finishDir(){
     $("hold").style.width = "0%";
     if(S.scanDir < 0){
       goPause("scanUp", "Tu grave: " + midiLabel(S.measLo));
