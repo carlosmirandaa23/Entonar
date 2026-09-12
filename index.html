@@ -119,6 +119,21 @@
       <button class="mini" id="remeasure">Medir</button>
     </div>
     <div class="row">
+      <div><label>Rango manual</label><small>Fija tus límites a mano, de la más grave a la más aguda.</small></div>
+      <div style="display:flex;gap:6px">
+        <select id="selLo" style="min-width:84px"></select>
+        <select id="selHi" style="min-width:84px"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Escribir mis límites</label><small>Si ya conoces tu rango, elígelo aquí y se aplica al instante.</small></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="selLo" aria-label="Nota más grave"></select>
+        <span style="color:var(--muted)">a</span>
+        <select id="selHi" aria-label="Nota más aguda"></select>
+      </div>
+    </div>
+    <div class="row">
       <div><label>Corregir octava</label><small>Si la medición quedó una octava arriba o abajo de lo que realmente cantas.</small></div>
       <div style="display:flex;gap:8px">
         <button class="mini" id="tessDown">8vb</button>
@@ -221,7 +236,8 @@
     running:false, mode:"practice",
     clef:"treble", clefMode:"auto", extra:1, acc:"nat",
     tol:35, holdMs:1000, showName:true, autoTone:false,
-    tess:null, tessMode:"detect", measLo:null,
+    tess:null, tessMode:"detect", measLo:null, measHi:null,
+    anchor:null, probe:null, probeT0:0, scanDir:-1, next:null, pauseTitle:"",
     pool:[], target:null, sound:null, k:0,
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -331,6 +347,8 @@
 
   function setTess(lo, hi, label){
     S.tess = {lo:lo, hi:hi};
+    const sl = $("selLo"), sh = $("selHi");
+    if(sl && sh){ sl.value = String(lo); sh.value = String(hi); }
     $("stTess").textContent = midiLabel(lo)+"–"+midiLabel(hi);
     $("tessInfo").textContent = (label?label+": ":"") + midiLabel(lo)+" a "+midiLabel(hi)
       + " (" + (hi-lo) + " semitonos)";
@@ -418,24 +436,44 @@
   }
 
   /* ---------------- medición de tesitura ---------------- */
+  const PC = [["C",0],["C",1],["D",0],["D",1],["E",0],["F",0],["F",1],["G",0],["G",1],["A",0],["A",1],["B",0]];
+  function midi2diaNote(m){
+    const r = Math.round(m), oct = Math.floor(r/12)-1, pc = ((r%12)+12)%12;
+    const L = PC[pc][0], al = PC[pc][1];
+    return dia2note(oct*7 + LETTERS.indexOf(L), al);
+  }
+  function showProbe(m, progress, cents, tuned){
+    const n = midi2diaNote(m);
+    const cl = m >= 59 ? "treble" : "bass";
+    let dia = n.dia, k = 0;
+    while(dia < CLEF[cl].bottom - 6){ dia += 7; k -= 1; }
+    while(dia > CLEF[cl].top + 6){ dia -= 7; k += 1; }
+    const shown = dia2note(dia, n.alter);
+    $("badge").textContent = "Midiendo tu rango";
+    $("noteName").innerHTML = midiLabel(m);
+    drawStaff(shown, cl, {progress:progress||0, voiceCents:cents, tuned:tuned, oct8:OCT8[String(k)]||""});
+  }
+
+  const SCAN_STEP = 2, SCAN_HOLD = 700, SCAN_TIMEOUT = 14000, FLOOR = 31, CEIL = 88;
+
   function beginMeasure(){
-    S.mode = "measureLow"; S.measLo = null;
+    S.mode = "anchor"; S.measLo = null; S.measHi = null; S.retry = false;
     mBuf = []; hist.length = 0;
     $("badge").textContent = "Midiendo tu rango";
     $("noteName").innerHTML = "";
     drawStaff(null, S.clef, {});
-    $("arrow").className = "arrow"; $("arrow").textContent = "↓";
-    $("msgMain").textContent = "Canta tu nota más grave cómoda";
-    $("msgSub").textContent = "Sin forzar: la más baja que te salga limpia y sostenida.";
+    $("arrow").className = "arrow"; $("arrow").textContent = "·";
+    $("skipBtn").textContent = "Ya no puedo";
+    $("msgMain").textContent = "Canta una nota cómoda y sosténla";
+    $("msgSub").textContent = "Cualquiera que te salga fácil. De ahí partimos.";
   }
 
   function measureStep(f, ts){
-    const low = S.mode==="measureLow";
     if(f<=0){
       mBuf = []; hist.length = 0;
       $("hold").style.width = "0%";
-      $("msgMain").textContent = low ? "Canta tu nota más grave cómoda" : "Ahora tu nota más aguda cómoda";
-      $("msgSub").textContent = "Vocal abierta y sostenida, sin forzar.";
+      $("msgMain").textContent = "Canta una nota cómoda y sosténla";
+      $("msgSub").textContent = "Vocal abierta, tipo «aaa».";
       return;
     }
     hist.push(f); if(hist.length>4) hist.shift();
@@ -444,38 +482,137 @@
     while(mBuf.length && ts - mBuf[0].t > 2000) mBuf.shift();
     const ms = mBuf.map(o=>o.m);
     const span = Math.max.apply(null,ms) - Math.min.apply(null,ms);
-    if(span > 1.2){ mBuf = [{t:ts, m:m}]; }
+    if(span > 1.2) mBuf = [{t:ts, m:m}];
     const dur = mBuf.length>1 ? ts - mBuf[0].t : 0;
     const p = Math.min(1, dur/1000);
     $("hold").style.width = (p*100).toFixed(0)+"%";
-    $("msgMain").textContent = low ? "Sostén esa nota grave" : "Sostén esa nota aguda";
+    $("msgMain").textContent = "Sostén esa nota";
     $("msgSub").textContent = midiLabel(m) + "  ·  " + midi2freq(m).toFixed(1) + " Hz";
-    if(p>=1) finishMeasure(Math.round(ms[ms.length-1]));
+    showProbe(m, p, null, false);
+    if(p>=1){
+      S.anchor = Math.round(ms[ms.length-1]);
+      S.measLo = S.anchor; S.measHi = S.anchor;
+      if(navigator.vibrate) navigator.vibrate(60);
+      goPause("scanDown", "Tu punto de partida: " + midiLabel(S.anchor));
+    }
   }
 
-  function finishMeasure(m){
-    mBuf = []; hist.length = 0; $("hold").style.width = "0%";
-    if(S.mode==="measureLow"){
-      S.measLo = m;
-      S.mode = "measureHigh";
-      $("arrow").textContent = "↑";
-      $("msgMain").textContent = "Bien: " + midiLabel(m);
-      $("msgSub").textContent = "Ahora canta tu nota más aguda cómoda y sostenla.";
+  function goPause(next, title){
+    S.mode = "measurePause"; S.next = next; S.pauseTitle = title;
+    S.silentSince = null; mBuf = []; hist.length = 0;
+    $("hold").style.width = "0%";
+    $("arrow").textContent = "·";
+    $("msgMain").textContent = title;
+    $("msgSub").textContent = "Deja de cantar para continuar.";
+  }
+
+  function pauseStep(f, ts){
+    const bajando = S.next === "scanDown";
+    if(f>0){
+      S.silentSince = null;
+      $("hold").style.width = "0%";
+      $("msgMain").textContent = "Deja de cantar";
+      $("msgSub").textContent = S.pauseTitle;
       return;
     }
-    if(m <= S.measLo + 4){
-      S.mode = "measureLow";
-      $("arrow").textContent = "↓";
-      $("msgMain").textContent = "El rango quedó muy corto";
-      $("msgSub").textContent = "Vamos de nuevo: canta tu nota más grave.";
+    if(!S.silentSince) S.silentSince = ts;
+    const quiet = ts - S.silentSince;
+    if(quiet < 900){
+      $("msgMain").textContent = S.pauseTitle;
+      $("msgSub").textContent = "Respira un momento…";
       return;
     }
-    setTess(S.measLo, m, "Medida");
+    const left = 3 - Math.floor((quiet-900)/1000);
+    if(left > 0){
+      $("msgMain").textContent = "Prepárate… " + left;
+      $("msgSub").textContent = S.next==="practice" ? "Empezamos a leer."
+        : bajando ? "Vamos BAJANDO nota por nota." : "Ahora vamos SUBIENDO nota por nota.";
+      $("hold").style.width = (((quiet-900)/3000)*100).toFixed(0)+"%";
+      return;
+    }
+    $("hold").style.width = "0%";
+    if(navigator.vibrate) navigator.vibrate(40);
+    if(S.next === "practice"){
+      S.mode = "practice"; $("skipBtn").textContent = "Saltar"; newTarget(); return;
+    }
+    S.mode = S.next;
+    S.scanDir = bajando ? -1 : 1;
+    setProbe((bajando ? S.measLo : S.measHi) + S.scanDir*SCAN_STEP, ts);
+  }
+
+  function setProbe(m, ts){
+    S.probe = m; S.probeT0 = ts; S.progress = 0; S.lastGoodTs = 0;
+    hist.length = 0;
+    $("arrow").className = "arrow"; $("arrow").textContent = S.scanDir<0 ? "↓" : "↑";
+    showProbe(m, 0, null, false);
+    $("msgMain").textContent = "¿Alcanzas " + midiLabel(m) + "?";
+    $("msgSub").textContent = "Suena la referencia. Iguálala y sostenla.";
+    probeTone(m);
+  }
+
+  function probeTone(m){
+    if(!ctx) return;
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type="triangle"; o.frequency.value = midi2freq(m);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime+0.02);
+    g.gain.setValueAtTime(0.18, ctx.currentTime+0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+1.0);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+1.05);
+  }
+
+  function scanStep(f, ts, dt){
+    let cents=null, tuned=false, m=null;
+    if(f>0){
+      hist.push(f); if(hist.length>4) hist.shift();
+      m = freq2midi(median3());
+      cents = (m - S.probe)*100;
+      tuned = Math.abs(cents) <= 60;
+    }else{ hist.length = 0; }
+
+    if(tuned){ S.progress += dt; S.lastGoodTs = ts; }
+    else if(ts - S.lastGoodTs > 200) S.progress = Math.max(0, S.progress - dt*1.5);
+
+    $("hold").style.width = Math.min(100, S.progress/SCAN_HOLD*100).toFixed(0)+"%";
+    showProbe(S.probe, S.progress/SCAN_HOLD, cents, tuned);
+
+    if(m===null){
+      $("msgMain").textContent = "¿Alcanzas " + midiLabel(S.probe) + "?";
+      $("msgSub").textContent = "Si ya no te sale, toca «Ya no puedo».";
+    }else if(tuned){
+      $("msgMain").textContent = "Bien — sostén";
+      $("msgSub").textContent = midiLabel(S.probe) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+    }else{
+      const low = cents < 0;
+      $("arrow").className = "arrow on"; $("arrow").textContent = low ? "↑" : "↓";
+      $("msgMain").textContent = low ? "Un poco más arriba" : "Un poco más abajo";
+      $("msgSub").textContent = "oyes " + midiLabel(m) + "  ·  pide " + midiLabel(S.probe);
+    }
+
+    if(S.progress >= SCAN_HOLD){ scanOk(ts); return; }
+    if(ts - S.probeT0 > SCAN_TIMEOUT){ scanEnd(); return; }
+  }
+
+  function scanOk(ts){
+    if(navigator.vibrate) navigator.vibrate(25);
+    if(S.scanDir < 0) S.measLo = S.probe; else S.measHi = S.probe;
+    const next = S.probe + S.scanDir*SCAN_STEP;
+    if(next < FLOOR || next > CEIL){ scanEnd(); return; }
+    setProbe(next, ts);
+  }
+
+  function scanEnd(){
+    $("hold").style.width = "0%";
+    if(S.scanDir < 0){
+      goPause("scanUp", "Tu grave: " + midiLabel(S.measLo));
+      return;
+    }
+    if(S.measHi - S.measLo < 5){
+      S.measLo = null; beginMeasure(); return;
+    }
+    setTess(S.measLo, S.measHi, "Medida");
     S.tessMode = "detect";
-    S.mode = "practice";
-    S.arrowReset = true;
-    $("arrow").className = "arrow"; $("arrow").textContent = "·";
-    newTarget();
+    goPause("practice", "Tu tesitura: " + midiLabel(S.measLo) + " a " + midiLabel(S.measHi));
   }
 
   /* ---------------- bucle ---------------- */
@@ -489,7 +626,10 @@
     analyser.getFloatTimeDomainData(buf);
     const d = detectPitch(buf, ctx.sampleRate);
 
-    if(S.mode !== "practice"){ measureStep(d.f, ts); return; }
+    if(S.mode === "measurePause"){ pauseStep(d.f, ts); return; }
+    if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
+    if(S.mode === "anchor"){ measureStep(d.f, ts); return; }
+    if(S.mode !== "practice"){ return; }
     if(!S.target) return;
 
     let cents = null, tuned = false, mNow = null;
@@ -591,6 +731,7 @@
       if(ctx) ctx.close();
       ctx=null; stream=null;
       $("startBtn").textContent = "Empezar";
+      $("skipBtn").textContent = "Saltar";
       $("toneBtn").disabled = true; $("skipBtn").disabled = true;
       $("msgMain").textContent = "Sesión detenida";
       $("msgSub").textContent = S.done+" notas logradas · mejor racha "+S.bestStreak;
@@ -623,8 +764,12 @@
     raf = requestAnimationFrame(loop);
   });
 
-  $("toneBtn").addEventListener("click", playTone);
+  $("toneBtn").addEventListener("click", ()=>{
+    if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
+    playTone();
+  });
   $("skipBtn").addEventListener("click", ()=>{
+    if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.mode!=="practice") return;
     S.streak=0; $("stStreak").textContent=0; newTarget();
   });
@@ -635,6 +780,44 @@
     if(S.running) beginMeasure();
     else { S.tess = null; $("msgMain").textContent = "Toca «Empezar» para medir tu tesitura"; $("msgSub").textContent = "Te pedirá tu nota más grave y la más aguda."; }
   });
+
+  (function fillRangeSelects(){
+    let o = "";
+    for(let m=33; m<=88; m++) o += '<option value="'+m+'">'+midiLabel(m)+'</option>';
+    $("selLo").innerHTML = o; $("selHi").innerHTML = o;
+    $("selLo").value = 43; $("selHi").value = 65;
+    const apply = ()=>{
+      let lo = Number($("selLo").value), hi = Number($("selHi").value);
+      if(hi <= lo + 4){ hi = lo + 5; $("selHi").value = hi; }
+      S.tessMode = "manual";
+      $("selTess").value = "detect";
+      setTess(lo, hi, "Manual");
+      if(S.running){ S.mode = "practice"; newTarget(); }
+    };
+    $("selLo").addEventListener("change", apply);
+    $("selHi").addEventListener("change", apply);
+  })();
+
+  (function fillManual(){
+    const lo = $("selLo"), hi = $("selHi");
+    let a = "", b = "";
+    for(let m=28; m<=88; m++){
+      a += '<option value="'+m+'">'+midiLabel(m)+'</option>';
+      b += '<option value="'+m+'">'+midiLabel(m)+'</option>';
+    }
+    lo.innerHTML = a; hi.innerHTML = b;
+    lo.value = "43"; hi.value = "65";
+    function apply(){
+      const l = Number(lo.value), h = Number(hi.value);
+      if(h - l < 5){ $("tessInfo").textContent = "El rango debe ser de al menos 5 semitonos."; return; }
+      S.tessMode = "manual";
+      $("selTess").value = "detect";
+      setTess(l, h, "Manual");
+      if(S.running){ S.mode = "practice"; $("skipBtn").textContent = "Saltar"; newTarget(); }
+    }
+    lo.addEventListener("change", apply);
+    hi.addEventListener("change", apply);
+  })();
 
   function shiftTess(semis){
     if(!S.tess){ $("tessInfo").textContent = "Primero mide o elige una tesitura."; return; }
