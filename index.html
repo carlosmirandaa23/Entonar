@@ -119,10 +119,11 @@
       <button class="mini" id="remeasure">Medir</button>
     </div>
     <div class="row">
-      <div><label>Rango manual</label><small>Fija tus límites a mano, de la más grave a la más aguda.</small></div>
-      <div style="display:flex;gap:6px">
-        <select id="selLo" style="min-width:84px"></select>
-        <select id="selHi" style="min-width:84px"></select>
+      <div><label>Rango manual</label><small>Fija tus límites a mano: de la más grave a la más aguda.</small></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="selLo" aria-label="Nota más grave" style="min-width:82px"></select>
+        <span style="color:var(--muted)">a</span>
+        <select id="selHi" aria-label="Nota más aguda" style="min-width:82px"></select>
       </div>
     </div>
     <div class="row">
@@ -132,14 +133,6 @@
         <option value="comfort" selected>Zona cómoda</option>
         <option value="core">Solo el centro</option>
       </select>
-    </div>
-    <div class="row">
-      <div><label>Escribir mis límites</label><small>Si ya conoces tu rango, elígelo aquí y se aplica al instante.</small></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select id="selLo" aria-label="Nota más grave"></select>
-        <span style="color:var(--muted)">a</span>
-        <select id="selHi" aria-label="Nota más aguda"></select>
-      </div>
     </div>
     <div class="row">
       <div><label for="selStep">Paso del barrido</label><small>Cromático recorre todas las notas; por tonos va al doble de rápido.</small></div>
@@ -352,7 +345,10 @@
         if(bestK!==null) out.push({clef:cl, dia:dia, alter:al, k:bestK});
       }
     }
-    return out;
+    // Si hay suficientes notas que caen tal cual en tu voz, usamos solo esas:
+    // el 8va/8vb queda como recurso para tesituras que no caben en la clave.
+    const naturales = out.filter(p=>p.k===0);
+    return naturales.length >= 4 ? naturales : out;
   }
 
   function buildPool(){
