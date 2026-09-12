@@ -119,6 +119,13 @@
       <button class="mini" id="remeasure">Medir</button>
     </div>
     <div class="row">
+      <div><label>Corregir octava</label><small>Si la medición quedó una octava arriba o abajo de lo que realmente cantas.</small></div>
+      <div style="display:flex;gap:8px">
+        <button class="mini" id="tessDown">8vb</button>
+        <button class="mini" id="tessUp">8va</button>
+      </div>
+    </div>
+    <div class="row">
       <div><label for="selClef">Clave</label><small>Automática la elige según tu tesitura.</small></div>
       <select id="selClef">
         <option value="auto" selected>Automática</option>
@@ -395,7 +402,7 @@
       if(v>bestVal){ bestVal=v; best=lag; }
     }
     if(best<0 || bestVal<0.55) return {f:-1};
-    const thr = bestVal*0.9;
+    const thr = bestVal*0.93;
     for(let lag=minLag; lag<=best; lag++)
       if(vals[lag]>thr && vals[lag]>vals[lag-1] && vals[lag]>=vals[lag+1]){ best=lag; break; }
     const x1=vals[best-1], x2=vals[best], x3=vals[best+1];
@@ -485,12 +492,12 @@
     if(S.mode !== "practice"){ measureStep(d.f, ts); return; }
     if(!S.target) return;
 
-    let cents = null, tuned = false;
+    let cents = null, tuned = false, mNow = null;
     if(d.f>0){
       hist.push(d.f); if(hist.length>4) hist.shift();
-      const m = freq2midi(median3());
-      cents = (m - S.sound)*100;
-      if(Math.abs(cents) > 900) cents = null; else tuned = Math.abs(cents) <= S.tol;
+      mNow = freq2midi(median3());
+      cents = (mNow - S.sound)*100;
+      tuned = Math.abs(cents) <= S.tol;
     }else{
       hist.length = 0;
     }
@@ -510,29 +517,36 @@
       oct8: OCT8[String(S.k)] || ""
     });
     $("hold").style.width = Math.min(100, S.progress/S.holdMs*100).toFixed(0)+"%";
-    say(d.f, cents, tuned);
+    say(d.f, mNow, cents, tuned);
   }
 
-  function say(f, cents, tuned){
+  function say(f, m, cents, tuned){
     const main=$("msgMain"), sub=$("msgSub"), arr=$("arrow"), msg=$("msg");
     msg.classList.toggle("tuned", !!tuned);
     if(f<=0 || cents===null){
       arr.className="arrow"; arr.textContent="·";
       main.textContent = "Canta la nota";
-      sub.textContent = "Vocal abierta y sostenida, tipo «aaa».";
-      return;
-    }
-    if(tuned){
-      arr.className="arrow"; arr.textContent="●";
-      main.textContent = "Ahí está — sostén";
-      sub.textContent = (cents>=0?"+":"") + cents.toFixed(0) + " ¢  ·  " + f.toFixed(1) + " Hz";
+      sub.textContent = "Se pide " + midiLabel(S.sound) + "  ·  " + midi2freq(S.sound).toFixed(1) + " Hz";
       return;
     }
     const abs = Math.abs(cents), low = cents < 0;
+    if(tuned){
+      arr.className="arrow"; arr.textContent="●";
+      main.textContent = "Ahí está — sostén";
+      sub.textContent = midiLabel(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+      return;
+    }
     arr.className="arrow on"; arr.textContent = low ? "↑" : "↓";
+    if(abs > 700){
+      const octs = Math.round(abs/1200);
+      const txt = octs<=1 ? "una octava" : octs+" octavas";
+      main.textContent = low ? "Estás "+txt+" abajo" : "Estás "+txt+" arriba";
+      sub.textContent = "oyes " + midiLabel(m) + "  ·  se pide " + midiLabel(S.sound);
+      return;
+    }
     const cuanto = abs>250 ? "bastante " : abs>90 ? "" : "un poco ";
     main.textContent = low ? "Vas "+cuanto+"grave — sube" : "Vas "+cuanto+"agudo — baja";
-    sub.textContent = (cents>=0?"+":"") + cents.toFixed(0) + " ¢  ·  " + f.toFixed(1) + " Hz";
+    sub.textContent = "oyes " + midiLabel(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
   }
 
   function succeed(cents){
@@ -621,6 +635,14 @@
     if(S.running) beginMeasure();
     else { S.tess = null; $("msgMain").textContent = "Toca «Empezar» para medir tu tesitura"; $("msgSub").textContent = "Te pedirá tu nota más grave y la más aguda."; }
   });
+
+  function shiftTess(semis){
+    if(!S.tess){ $("tessInfo").textContent = "Primero mide o elige una tesitura."; return; }
+    setTess(S.tess.lo+semis, S.tess.hi+semis, "Ajustada");
+    if(S.running && S.mode==="practice") newTarget();
+  }
+  $("tessDown").addEventListener("click", ()=> shiftTess(-12));
+  $("tessUp").addEventListener("click", ()=> shiftTess(12));
 
   $("selTess").addEventListener("change", e=>{
     S.tessMode = e.target.value;
