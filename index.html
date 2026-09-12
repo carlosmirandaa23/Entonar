@@ -126,6 +126,14 @@
       </div>
     </div>
     <div class="row">
+      <div><label for="selTrim">Zona de práctica</label><small>Recorta los extremos del rango medido, donde la voz aún no obedece.</small></div>
+      <select id="selTrim">
+        <option value="full">Rango completo</option>
+        <option value="comfort" selected>Zona cómoda</option>
+        <option value="core">Solo el centro</option>
+      </select>
+    </div>
+    <div class="row">
       <div><label>Escribir mis límites</label><small>Si ya conoces tu rango, elígelo aquí y se aplica al instante.</small></div>
       <div style="display:flex;gap:6px;align-items:center">
         <select id="selLo" aria-label="Nota más grave"></select>
@@ -243,7 +251,7 @@
     running:false, mode:"practice",
     clef:"treble", clefMode:"auto", extra:1, acc:"nat",
     tol:35, holdMs:1000, showName:true, autoTone:false,
-    tess:null, tessMode:"detect", measLo:null, measHi:null,
+    tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
     progress:0, done:0, streak:0, bestStreak:0,
@@ -322,43 +330,73 @@
   /* ---------------- tesitura y notas ---------------- */
   function autoClef(){
     if(S.clefMode==="treble" || S.clefMode==="bass") return S.clefMode;
-    if(S.clefMode==="both") return Math.random()<0.5?"treble":"bass";
     if(!S.tess) return "treble";
     return (S.tess.lo + S.tess.hi)/2 < 60 ? "bass" : "treble";
+  }
+
+  function clefNotes(cl){
+    // Todas las notas escribibles en esa clave que caben en la tesitura.
+    const C = CLEF[cl], lo = C.bottom - S.extra*2, hi = C.top + S.extra*2, out = [];
+    for(let dia=lo; dia<=hi; dia++){
+      const L = LETTERS[dia - Math.floor(dia/7)*7];
+      const alters = S.acc==="all" ? [0,1,-1] : [0];
+      for(const al of alters){
+        if(al===1 && (L==="E"||L==="B")) continue;
+        if(al===-1 && (L==="C"||L==="F")) continue;
+        const base = dia2note(dia,al).midi;
+        let bestK = null;
+        for(let k=-2;k<=2;k++){
+          const snd = base + 12*k;
+          if(snd>=S.tess.lo && snd<=S.tess.hi && (bestK===null || Math.abs(k)<Math.abs(bestK))) bestK = k;
+        }
+        if(bestK!==null) out.push({clef:cl, dia:dia, alter:al, k:bestK});
+      }
+    }
+    return out;
   }
 
   function buildPool(){
     S.pool = [];
     if(!S.tess) return;
-    const clefs = S.clefMode==="both" ? ["treble","bass"]
-                : S.clefMode==="auto" ? [autoClef()] : [S.clefMode];
-    for(const cl of clefs){
-      const C = CLEF[cl], lo = C.bottom - S.extra*2, hi = C.top + S.extra*2;
-      for(let dia=lo; dia<=hi; dia++){
-        const L = LETTERS[dia - Math.floor(dia/7)*7];
-        const alters = S.acc==="all" ? [0,1,-1] : [0];
-        for(const al of alters){
-          if(al===1 && (L==="E"||L==="B")) continue;
-          if(al===-1 && (L==="C"||L==="F")) continue;
-          const base = dia2note(dia,al).midi;
-          let bestK = null;
-          for(let k=-2;k<=2;k++){
-            const snd = base + 12*k;
-            if(snd>=S.tess.lo && snd<=S.tess.hi && (bestK===null || Math.abs(k)<Math.abs(bestK))) bestK = k;
-          }
-          if(bestK!==null) S.pool.push({clef:cl, dia:dia, alter:al, k:bestK});
-        }
-      }
-    }
+    if(S.clefMode==="treble" || S.clefMode==="bass"){ S.pool = clefNotes(S.clefMode); return; }
+
+    const t = clefNotes("treble"), b = clefNotes("bass");
+    if(S.clefMode==="both"){ S.pool = t.concat(b); return; }
+
+    // Automática: usa una clave, o las dos si tu voz cubre ambas sin trasladar octava.
+    const natT = t.filter(p=>p.k===0).length, natB = b.filter(p=>p.k===0).length;
+    if(natT >= 4 && natB >= 4) S.pool = t.concat(b);
+    else if(natT >= natB) S.pool = t;
+    else S.pool = b;
   }
 
+  const TRIM = {
+    full:   {lo:0, hi:0,  name:"Rango completo"},
+    comfort:{lo:3, hi:4,  name:"Zona cómoda"},
+    core:   {lo:6, hi:8,  name:"Solo el centro"}
+  };
+
   function setTess(lo, hi, label){
+    S.tessFull = {lo:lo, hi:hi};
+    if(label) S.tessLabel = label;
+    applyTrim();
+  }
+
+  function applyTrim(){
+    if(!S.tessFull) return;
+    const t = TRIM[S.trim] || TRIM.full;
+    let lo = S.tessFull.lo + t.lo, hi = S.tessFull.hi - t.hi;
+    if(hi - lo < 11){ // nunca dejar menos de una octava
+      const mid = (S.tessFull.lo + S.tessFull.hi)/2;
+      lo = Math.round(mid-6); hi = Math.round(mid+6);
+    }
     S.tess = {lo:lo, hi:hi};
-    const sl = $("selLo"), sh = $("selHi");
-    if(sl && sh){ sl.value = String(lo); sh.value = String(hi); }
     $("stTess").textContent = midiLabel(lo)+"–"+midiLabel(hi);
-    $("tessInfo").textContent = (label?label+": ":"") + midiLabel(lo)+" a "+midiLabel(hi)
-      + " (" + (hi-lo) + " semitonos)";
+    const recortado = (t.lo || t.hi)
+      ? "  ·  medido " + midiLabel(S.tessFull.lo) + "–" + midiLabel(S.tessFull.hi)
+      : "";
+    $("tessInfo").textContent = (S.tessLabel ? S.tessLabel+": " : "")
+      + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado;
     buildPool();
   }
 
@@ -823,7 +861,7 @@
     $("selTess").value = "detect"; S.tessMode = "detect";
     $("panel").classList.remove("open");
     if(S.running) beginMeasure();
-    else { S.tess = null; $("msgMain").textContent = "Toca «Empezar» para medir tu tesitura"; $("msgSub").textContent = "Te pedirá tu nota más grave y la más aguda."; }
+    else { S.tess = null; S.tessFull = null; $("msgMain").textContent = "Toca «Empezar» para medir tu tesitura"; $("msgSub").textContent = "Te pedirá tu nota más grave y la más aguda."; }
   });
 
   (function fillRangeSelects(){
@@ -865,8 +903,8 @@
   })();
 
   function shiftTess(semis){
-    if(!S.tess){ $("tessInfo").textContent = "Primero mide o elige una tesitura."; return; }
-    setTess(S.tess.lo+semis, S.tess.hi+semis, "Ajustada");
+    if(!S.tessFull){ $("tessInfo").textContent = "Primero mide o elige una tesitura."; return; }
+    setTess(S.tessFull.lo+semis, S.tessFull.hi+semis, "Ajustada");
     if(S.running && S.mode==="practice") newTarget();
   }
   $("tessDown").addEventListener("click", ()=> shiftTess(-12));
@@ -876,7 +914,7 @@
     S.tessMode = e.target.value;
     if(S.tessMode==="detect"){
       if(S.running) beginMeasure();
-      else { S.tess=null; $("tessInfo").textContent = "Sin medir. Se mide al empezar."; $("stTess").textContent="—"; }
+      else { S.tess=null; S.tessFull=null; $("tessInfo").textContent = "Sin medir. Se mide al empezar."; $("stTess").textContent="—"; }
       return;
     }
     const t = TESS[S.tessMode];
@@ -893,6 +931,11 @@
   bindSel("selClef","clefMode",null,true);
   bindSel("selRange","extra",Number,true);
   bindSel("selAcc","acc",null,true);
+  $("selTrim").addEventListener("change", e=>{
+    S.trim = e.target.value;
+    applyTrim();
+    if(S.running && S.mode==="practice") newTarget();
+  });
   bindSel("selStep","scanStep",Number);
   bindSel("selTol","tol",Number);
   bindSel("selHold","holdMs",Number);
