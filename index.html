@@ -64,7 +64,10 @@
   .tb.on{background:var(--ink-2);color:var(--gold);border-color:var(--gold)}
   .tabp{display:none}
   .tabp.on{display:block}
-  .ns{margin-top:10px;font-size:12px;color:var(--muted)}
+  .ns{margin-top:10px;font-size:12px;color:var(--muted);max-height:46vh;overflow-y:auto;
+      -webkit-overflow-scrolling:touch}
+  .nsHead{color:var(--muted);font-size:12px;margin-bottom:8px;position:sticky;top:0;
+      background:var(--ink);padding-bottom:4px}
   .ns table{width:100%;border-collapse:collapse}
   .ns td{padding:3px 0;vertical-align:middle}
   .ns td.n{font-family:Georgia,serif;font-size:13px;color:var(--text);width:58px}
@@ -327,6 +330,15 @@
         </div>
     </div>
     <div class="tabp" id="tp-progreso">
+      <div class="row">
+        <div><label for="selOrden">Ordenar por</label></div>
+        <select id="selOrden">
+          <option value="prioridad" selected>Prioridad de práctica</option>
+          <option value="altura">Altura (grave → agudo)</option>
+          <option value="desv">Peor desviación</option>
+          <option value="veces">Más practicadas</option>
+        </select>
+      </div>
       <div class="row" style="display:block">
         <label>Tu historial por nota</label>
         <div id="noteStats" class="ns">Todavía no hay datos. Canta unas notas y aparecen aquí.</div>
@@ -388,7 +400,7 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
-    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null,
+    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, orden:"prioridad", key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null,
     echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
@@ -1695,7 +1707,7 @@
         stats: S.stats,
         tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
         play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
-        key: S.key, label: S.label, drone: S.drone, anchor: S.anchor, anclaLog: S.anclaLog,
+        key: S.key, label: S.label, drone: S.drone, orden: S.orden, anchor: S.anchor, anclaLog: S.anclaLog,
         echo: S.echo, patron: S.patron, exDir: S.exDir, acorde: S.acorde,
         clefMode: S.clefMode, extra: S.extra, acc: S.acc,
         tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
@@ -1709,7 +1721,7 @@
     try{ d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); }catch(e){ return; }
     if(!d) return;
     S.stats = d.stats || {};
-    ["trim","play","timbre","focus","clefMode","acc","tessLabel","label","drone","acorde"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    ["trim","play","timbre","focus","clefMode","acc","tessLabel","label","drone","acorde","orden"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
     if(typeof d.key === "number") S.key = d.key;
     if(typeof d.anchor === "number") S.anchor = d.anchor;
     if(Array.isArray(d.anclaLog)) S.anclaLog = d.anclaLog;
@@ -1722,7 +1734,7 @@
     set("selAcc",S.acc); set("selTol",S.tol); set("selHold",S.holdMs);
     set("selStep",S.scanStep); set("selTrim",S.trim);
     set("selLabel",S.label); set("selKey",S.key); set("selDrone",S.drone); set("selAnchor",S.anchor);
-    set("selEcho",S.echo); set("selPatron",S.patron); set("selDir",S.exDir); set("selAcorde",S.acorde);
+    set("selOrden",S.orden); set("selEcho",S.echo); set("selPatron",S.patron); set("selDir",S.exDir); set("selAcorde",S.acorde);
     [["swName","showName"],["swAuto","autoTone"]].forEach(pair=>{
       const el=$(pair[0]); if(!el) return;
       el.classList.toggle("on", S[pair[1]]);
@@ -1775,8 +1787,18 @@
       const st = S.stats[k], m = Number(k);
       const media = st.n ? st.sum/st.n : null;
       return {m:m, media:media, n:st.n, fallos:st.fallos, peso:pesoDe(m)};
-    }).sort((a,b)=> b.peso - a.peso).slice(0, 14);
-    let h = "<table>";
+    });
+    const orden = {
+      prioridad: (a,b)=> b.peso - a.peso,
+      altura:    (a,b)=> a.m - b.m,
+      desv:      (a,b)=> (b.media===null?999:b.media) - (a.media===null?999:a.media),
+      veces:     (a,b)=> b.n - a.n
+    }[S.orden] || ((a,b)=> b.peso - a.peso);
+    filas.sort(orden);
+    const total = filas.reduce((x,f)=>x+f.n, 0);
+    const fallosTot = filas.reduce((x,f)=>x+f.fallos, 0);
+    let h = '<div class="nsHead">' + filas.length + " notas · " + total + " repeticiones"
+          + (fallosTot ? " · " + fallosTot + " fallos" : "") + "</div><table>";
     for(const f of filas){
       const v = f.media===null ? 40 : f.media;
       const col = v < 10 ? "#2F8F72" : v < 22 ? "#C9A227" : "#B4542F";
@@ -2046,6 +2068,7 @@
     if(S.running && S.play==="vocaliz") vocalizNueva();
     guardar();
   });
+  $("selOrden").addEventListener("change", e=>{ S.orden = e.target.value; pintarStats(); guardar(); });
   $("selFocus").addEventListener("change", e=>{ S.focus = e.target.value; guardar(); });
   $("clearStats").addEventListener("click", ()=>{
     S.stats = {}; pintarStats(); guardar();
