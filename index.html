@@ -115,11 +115,17 @@
   </div>
 
   <div class="panel" id="panel">
-    <div class="tabs"><button type="button" class="tb on" data-t="voz">Voz</button><button type="button" class="tb" data-t="practica">Práctica</button><button type="button" class="tb" data-t="lectura">Lectura</button><button type="button" class="tb" data-t="sonido">Sonido</button><button type="button" class="tb" data-t="progreso">Progreso</button></div>
+    <div class="tabs">
+      <button type="button" class="tb on" data-t="voz">Voz</button>
+      <button type="button" class="tb" data-t="practica">Práctica</button>
+      <button type="button" class="tb" data-t="lectura">Lectura</button>
+      <button type="button" class="tb" data-t="sonido">Sonido</button>
+      <button type="button" class="tb" data-t="progreso">Progreso</button>
+    </div>
     <div class="tabp on" id="tp-voz">
-<div class="row">
-      <div><label for="selTess">Tesitura</label><small id="tessInfo">Sin medir. Las notas se eligen dentro de tu rango.</small></div>
-      <select id="selTess">
+      <div class="row">
+        <div><label for="selTess">Tesitura</label><small id="tessInfo">Sin medir. Las notas se eligen dentro de tu rango.</small></div>
+        <select id="selTess">
         <option value="detect" selected>Medir la mía</option>
         <option value="bass">Bajo</option>
         <option value="baritone">Barítono</option>
@@ -127,75 +133,76 @@
         <option value="alto">Contralto</option>
         <option value="mezzo">Mezzosoprano</option>
         <option value="soprano">Soprano</option>
-      </select>
-    </div
-<div class="row">
-      <div><label>Volver a medir</label><small>Repite la prueba de nota más grave y más aguda.</small></div>
-      <button class="mini" id="remeasure">Medir</button>
-    </div
-<div class="row">
-      <div><label>Rango manual</label><small>Fija tus límites a mano: de la más grave a la más aguda.</small></div>
-      <div style="display:flex;gap:6px;align-items:center">
+        </select>
+        </div>
+      <div class="row">
+        <div><label>Volver a medir</label><small>Repite la prueba de nota más grave y más aguda.</small></div>
+        <button class="mini" id="remeasure">Medir</button>
+        </div>
+      <div class="row">
+        <div><label>Rango manual</label><small>Fija tus límites a mano: de la más grave a la más aguda.</small></div>
+        <div style="display:flex;gap:6px;align-items:center">
         <select id="selLo" aria-label="Nota más grave" style="min-width:82px"></select>
         <span style="color:var(--muted)">a</span>
         <select id="selHi" aria-label="Nota más aguda" style="min-width:82px"></select>
-      </div>
-    </div
-<div class="row">
-      <div><label for="selTrim">Zona de práctica</label><small>Recorta los extremos del rango medido, donde la voz aún no obedece.</small></div>
-      <select id="selTrim">
+        </div>
+        </div>
+      <div class="row">
+        <div><label for="selTrim">Zona de práctica</label><small>Recorta los extremos del rango medido, donde la voz aún no obedece.</small></div>
+        <select id="selTrim">
         <option value="full">Rango completo</option>
         <option value="comfort" selected>Zona cómoda</option>
         <option value="core">Solo el centro</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selStep">Paso del barrido</label><small>Cromático recorre todas las notas; por tonos va al doble de rápido.</small></div>
-      <select id="selStep">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selStep">Paso del barrido</label><small>Cromático recorre todas las notas; por tonos va al doble de rápido.</small></div>
+        <select id="selStep">
         <option value="1" selected>Semitono</option>
         <option value="2">Tono</option>
-      </select>
-    </div
-<div class="row">
-      <div><label>Corregir octava</label><small>Si la medición quedó una octava arriba o abajo de lo que realmente cantas.</small></div>
-      <div style="display:flex;gap:8px">
+        </select>
+        </div>
+      <div class="row">
+        <div><label>Corregir octava</label><small>Si la medición quedó una octava arriba o abajo de lo que realmente cantas.</small></div>
+        <div style="display:flex;gap:8px">
         <button class="mini" id="tessDown">8vb</button>
         <button class="mini" id="tessUp">8va</button>
-      </div>
-    </div
-    </div><div class="tabp" id="tp-practica">
-<div class="row">
-      <div><label for="selAnchor">Nota ancla</label><small>La que memorizas en el modo ancla.</small></div>
-      <select id="selAnchor"></select>
-    </div
-<div class="row">
-      <div><label for="selFocus">Qué notas practicar</label><small>«Notas débiles» insiste en las que fallas o desafinas más.</small></div>
-      <select id="selFocus">
+        </div>
+        </div>
+    </div>
+    <div class="tabp" id="tp-practica">
+      <div class="row">
+        <div><label for="selAnchor">Nota ancla</label><small>La que memorizas en el modo ancla.</small></div>
+        <select id="selAnchor"></select>
+        </div>
+      <div class="row">
+        <div><label for="selFocus">Qué notas practicar</label><small>«Notas débiles» insiste en las que fallas o desafinas más.</small></div>
+        <select id="selFocus">
         <option value="debiles" selected>Notas débiles</option>
         <option value="azar">Al azar</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selPlay">Modo</label><small>Lectura: una nota a la vez. Arcade: escuchas una secuencia y la cantas de memoria.</small></div>
-      <select id="selPlay">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selPlay">Modo</label><small>Lectura: una nota a la vez. Arcade: escuchas una secuencia y la cantas de memoria.</small></div>
+        <select id="selPlay">
         <option value="read" selected>Lectura</option>
         <option value="arcade">Arcade</option>
         <option value="ancla">Ancla (memoria de altura)</option>
         <option value="vocaliz">Vocalises (escalas)</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selEcho">Eco: silencio antes de cantar</label><small>En modo lectura: suena la nota, se calla, y hasta entonces cantas.</small></div>
-      <select id="selEcho">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selEcho">Eco: silencio antes de cantar</label><small>En modo lectura: suena la nota, se calla, y hasta entonces cantas.</small></div>
+        <select id="selEcho">
         <option value="0" selected>Sin eco</option>
         <option value="1500">1.5 s</option>
         <option value="3000">3 s</option>
         <option value="5000">5 s</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selPatron">Patrón del vocalise</label></div>
-      <select id="selPatron">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selPatron">Patrón del vocalise</label></div>
+        <select id="selPatron">
         <option value="escalera">Escalera ↑ (tono arriba, semitono abajo)</option>
         <option value="escaleraB">Escalera ↓ (tono abajo, semitono arriba)</option>
         <option value="escaleraIV">Escalera ↑↓ (ida y vuelta)</option>
@@ -205,58 +212,59 @@
         <option value="arp8">Arpegio a la octava</option>
         <option value="q51">Quinta: 5-1</option>
         <option value="oct">Octava: 1-8-1</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selDir">Dirección</label><small>Bajando es lo que recomiendan para empezar: la voz se relaja al descender.</small></div>
-      <select id="selDir">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selDir">Dirección</label><small>Bajando es lo que recomiendan para empezar: la voz se relaja al descender.</small></div>
+        <select id="selDir">
         <option value="-1" selected>Bajando medio tono</option>
         <option value="1">Subiendo medio tono</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selLen">Notas por ronda</label><small>Solo aplica al modo arcade.</small></div>
-      <select id="selLen">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selLen">Notas por ronda</label><small>Solo aplica al modo arcade.</small></div>
+        <select id="selLen">
         <option value="3">3</option>
         <option value="4">4</option>
         <option value="5" selected>5</option>
         <option value="6">6</option>
         <option value="8">8</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selTol">Tolerancia</label></div>
-      <select id="selTol">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selTol">Tolerancia</label></div>
+        <select id="selTol">
         <option value="50">Amplia (±50 ¢)</option>
         <option value="35" selected>Normal (±35 ¢)</option>
         <option value="20">Estricta (±20 ¢)</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selHold">Tiempo sostenido</label></div>
-      <select id="selHold">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selHold">Tiempo sostenido</label></div>
+        <select id="selHold">
         <option value="600">0.6 s</option>
         <option value="1000" selected>1.0 s</option>
         <option value="1500">1.5 s</option>
         <option value="2500">2.5 s</option>
-      </select>
-    </div
-    </div><div class="tabp" id="tp-lectura">
-<div class="row">
-      <div><label for="selLabel">Etiquetas</label><small>Cómo se nombra la nota: su nombre real, su grado en la tonalidad, o do móvil.</small></div>
-      <select id="selLabel">
+        </select>
+        </div>
+    </div>
+    <div class="tabp" id="tp-lectura">
+      <div class="row">
+        <div><label for="selLabel">Etiquetas</label><small>Cómo se nombra la nota: su nombre real, su grado en la tonalidad, o do móvil.</small></div>
+        <select id="selLabel">
         <option value="fijo" selected>Nombre fijo</option>
         <option value="grado">Grado (1–7)</option>
         <option value="movil">Do móvil</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selKey">Tonalidad</label><small>Define la tónica para los grados y el bordón.</small></div>
-      <select id="selKey"></select>
-    </div
-<div class="row">
-      <div><label for="selClef">Clave</label><small>Automática la elige según tu tesitura.</small></div>
-      <select id="selClef">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selKey">Tonalidad</label><small>Define la tónica para los grados y el bordón.</small></div>
+        <select id="selKey"></select>
+        </div>
+      <div class="row">
+        <div><label for="selClef">Clave</label><small>Automática la elige según tu tesitura.</small></div>
+        <select id="selClef">
         <option value="auto" selected>Automática</option>
         <option value="treble">Sol</option>
         <option value="bass">Fa</option>
@@ -265,63 +273,65 @@
         <option value="do4">Do en 4.ª (tenor)</option>
         <option value="do5">Do en 5.ª (barítono)</option>
         <option value="grand">Sistema doble (piano)</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selRange">Extensión</label><small>Qué tan lejos del pentagrama pueden caer las notas.</small></div>
-      <select id="selRange">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selRange">Extensión</label><small>Qué tan lejos del pentagrama pueden caer las notas.</small></div>
+        <select id="selRange">
         <option value="0">Solo pentagrama</option>
         <option value="1" selected>+1 línea adicional</option>
         <option value="2">+2 líneas adicionales</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selAcc">Alteraciones</label></div>
-      <select id="selAcc">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selAcc">Alteraciones</label></div>
+        <select id="selAcc">
         <option value="nat" selected>Solo naturales</option>
         <option value="all">Con ♯ y ♭</option>
-      </select>
-    </div
-<div class="row">
-      <div><label>Mostrar el nombre</label><small>Apágalo para leer de verdad.</small></div>
-      <div class="sw on" id="swName" role="switch" aria-checked="true" tabindex="0"><i></i></div>
-    </div
-    </div><div class="tabp" id="tp-sonido">
-<div class="row">
-      <div><label for="selAcorde">Acorde de referencia</label><small>Antes de cada tanda de vocalises, para ubicarte en la armonía.</small></div>
-      <select id="selAcorde">
+        </select>
+        </div>
+      <div class="row">
+        <div><label>Mostrar el nombre</label><small>Apágalo para leer de verdad.</small></div>
+        <div class="sw on" id="swName" role="switch" aria-checked="true" tabindex="0"><i></i></div>
+        </div>
+    </div>
+    <div class="tabp" id="tp-sonido">
+      <div class="row">
+        <div><label for="selAcorde">Acorde de referencia</label><small>Antes de cada tanda de vocalises, para ubicarte en la armonía.</small></div>
+        <select id="selAcorde">
         <option value="si" selected>Sí</option>
         <option value="no">No</option>
-      </select>
-    </div>
-<div class="row">
-      <div><label for="selDrone">Bordón</label><small>Tono de la tónica que te da contexto. Continuo necesita audífonos.</small></div>
-      <select id="selDrone">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selDrone">Bordón</label><small>Tono de la tónica que te da contexto. Continuo necesita audífonos.</small></div>
+        <select id="selDrone">
         <option value="off">Sin bordón</option>
         <option value="pulso" selected>Al empezar cada nota</option>
         <option value="continuo">Continuo</option>
-      </select>
-    </div
-<div class="row">
-      <div><label for="selTimbre">Timbre</label><small>Con qué sonido te da la referencia.</small></div>
-      <select id="selTimbre">
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selTimbre">Timbre</label><small>Con qué sonido te da la referencia.</small></div>
+        <select id="selTimbre">
         <option value="voz" selected>Voz («a»)</option>
         <option value="piano">Piano</option>
         <option value="simple">Tono simple</option>
-      </select>
-    </div
-<div class="row">
-      <div><label>Tono de referencia automático</label><small>Suena al aparecer cada nota.</small></div>
-      <div class="sw" id="swAuto" role="switch" aria-checked="false" tabindex="0"><i></i></div>
-    </div
-    </div><div class="tabp" id="tp-progreso">
-<div class="row" style="display:block">
-      <label>Tu historial por nota</label>
-      <div id="noteStats" class="ns">Todavía no hay datos. Canta unas notas y aparecen aquí.</div>
-      <button class="mini" id="clearStats" style="margin-top:10px">Borrar historial</button>
-    </div
+        </select>
+        </div>
+      <div class="row">
+        <div><label>Tono de referencia automático</label><small>Suena al aparecer cada nota.</small></div>
+        <div class="sw" id="swAuto" role="switch" aria-checked="false" tabindex="0"><i></i></div>
+        </div>
     </div>
-   </div>
+    <div class="tabp" id="tp-progreso">
+      <div class="row" style="display:block">
+        <label>Tu historial por nota</label>
+        <div id="noteStats" class="ns">Todavía no hay datos. Canta unas notas y aparecen aquí.</div>
+        <button class="mini" id="clearStats" style="margin-top:10px">Borrar historial</button>
+        </div>
+    </div>
+  </div>
 
   <p class="note">El micrófono se procesa solo en tu dispositivo; nada se envía a ningún lado.</p>
 </div>
