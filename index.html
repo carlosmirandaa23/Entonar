@@ -95,13 +95,30 @@
   </div>
 
   <div class="stats">
-    <div class="stat"><b id="stDone">0</b><span>notas logradas</span></div>
+    <div class="stat"><b id="stDone">0</b><span id="stDoneLbl">notas logradas</span></div>
     <div class="stat"><b id="stStreak">0</b><span>racha</span></div>
     <div class="stat"><b id="stAvg">—</b><span>desviación media</span></div>
     <div class="stat"><b id="stTess">—</b><span>tu tesitura</span></div>
   </div>
 
   <div class="panel" id="panel">
+    <div class="row">
+      <div><label for="selPlay">Modo</label><small>Lectura: una nota a la vez. Arcade: escuchas una secuencia y la cantas de memoria.</small></div>
+      <select id="selPlay">
+        <option value="read" selected>Lectura</option>
+        <option value="arcade">Arcade</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selLen">Notas por ronda</label><small>Solo aplica al modo arcade.</small></div>
+      <select id="selLen">
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5" selected>5</option>
+        <option value="6">6</option>
+        <option value="8">8</option>
+      </select>
+    </div>
     <div class="row">
       <div><label for="selTess">Tesitura</label><small id="tessInfo">Sin medir. Las notas se eligen dentro de tu rango.</small></div>
       <select id="selTess">
@@ -256,6 +273,8 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
+    play:"read", arcadeLen:5, seq:[], seqI:0, seqClef:"treble", playI:-1,
+    lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
   };
@@ -679,7 +698,7 @@
     $("hold").style.width = "0%";
     if(navigator.vibrate) navigator.vibrate(40);
     if(S.next === "practice"){
-      S.mode = "practice"; $("skipBtn").textContent = "Saltar"; newTarget(); return;
+      $("skipBtn").textContent = "Saltar"; startPlaying(); return;
     }
     S.mode = S.next;
     S.scanDir = bajando ? -1 : 1;
@@ -778,6 +797,212 @@
     goPause("practice", "Tu tesitura: " + midiLabel(S.measLo) + " a " + midiLabel(S.measHi));
   }
 
+  /* ---------------- modo arcade ---------------- */
+  function clearTimers(){ S.timers.forEach(clearTimeout); S.timers = []; }
+
+  function ledgerSvg(x, y, cl){
+    let s = "";
+    const L = yy => '<line x1="'+(x-14)+'" y1="'+yy+'" x2="'+(x+14)+'" y2="'+yy+'" stroke="#2B3550" stroke-width="1.4"/>';
+    if(cl === "grand"){
+      if(y < 60) for(let yy=48; yy>=y-1; yy-=12) s += L(yy);
+      else if(y === G_MID) s += L(G_MID);
+      else if(y > 180) for(let yy=192; yy<=y+1; yy+=12) s += L(yy);
+    }else{
+      const top = Y_BOTTOM - 4*GAP;
+      if(y < top-1) for(let yy=top-GAP; yy>=y-1; yy-=GAP) s += L(yy);
+      if(y > Y_BOTTOM+1) for(let yy=Y_BOTTOM+GAP; yy<=y+1; yy+=GAP) s += L(yy);
+    }
+    return s;
+  }
+
+  function drawSequence(opts){
+    opts = opts || {};
+    const cl = S.seqClef;
+    drawStaff(null, cl, {});
+    const n = S.seq.length;
+    const step = n>1 ? Math.min(46, 200/(n-1)) : 0;
+    const x0 = 100;
+    let s = "";
+    S.seq.forEach((it, i)=>{
+      const x = x0 + i*step;
+      const y = cl==="grand" ? yGrand(it.dia) : yOfDia(it.dia, cl);
+      const cantando = S.mode === "arcadeSing";
+      const hecha = cantando && i < S.seqI;
+      const actual = (opts.playIndex===i) || (cantando && i===S.seqI);
+      const col = hecha ? "#2F8F72" : actual ? "#B08A16" : "#1A2135";
+      s += ledgerSvg(x, y, cl);
+      if(it.alter!==0)
+        s += '<text x="'+(x-26)+'" y="'+(y+6)+'" font-size="20" fill="'+col+'" font-family="serif">'+(it.alter===1?"\u266F":"\u266D")+'</text>';
+      const mid = cl==="grand" ? (it.dia>=28?34:22) : CLEF[cl].bottom+4;
+      if(it.dia < mid)
+        s += '<line x1="'+(x+6.6)+'" y1="'+(y-1)+'" x2="'+(x+6.6)+'" y2="'+(y-32)+'" stroke="'+col+'" stroke-width="1.8"/>';
+      else
+        s += '<line x1="'+(x-6.6)+'" y1="'+(y+1)+'" x2="'+(x-6.6)+'" y2="'+(y+32)+'" stroke="'+col+'" stroke-width="1.8"/>';
+      s += '<ellipse cx="'+x+'" cy="'+y+'" rx="7.2" ry="5.4" fill="'+col+'" transform="rotate(-20 '+x+' '+y+')"/>';
+      if(actual){
+        const R = 15, CIRC = 2*Math.PI*R;
+        const p = cantando ? Math.max(0, Math.min(1, S.progress/S.holdMs)) : 1;
+        s += '<circle cx="'+x+'" cy="'+y+'" r="'+R+'" fill="none" stroke="rgba(176,138,22,.3)" stroke-width="2.6"/>';
+        if(p>0) s += '<circle cx="'+x+'" cy="'+y+'" r="'+R+'" fill="none" stroke="'+(cantando?"#2F8F72":"#B08A16")+'" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="'+(p*CIRC).toFixed(1)+' '+CIRC.toFixed(1)+'" transform="rotate(-90 '+x+' '+y+')"/>';
+      }
+    });
+    staffEl.insertAdjacentHTML("beforeend", s);
+  }
+
+  function seqTone(m, ms){
+    if(!ctx) return;
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type="triangle"; o.frequency.value = midi2freq(m);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2, t+0.02);
+    g.gain.setValueAtTime(0.2, t+ms/1000*0.8);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+ms/1000);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(t+ms/1000+0.05);
+  }
+
+  function livesText(){ return " · " + "\u2665".repeat(S.lives) + "\u2661".repeat(3-S.lives); }
+
+  function arcadeNewRound(){
+    clearTimers();
+    if(!S.pool.length) buildPool();
+    if(!S.pool.length){
+      $("msgMain").textContent = "Ninguna nota cabe en tu tesitura";
+      $("msgSub").textContent = "Amplía la extensión o vuelve a medir tu rango.";
+      return;
+    }
+    const claves = S.pool.map(p=>p.clef).filter((v,i,a)=>a.indexOf(v)===i);
+    const cl = claves[Math.floor(Math.random()*claves.length)];
+    const opciones = S.pool.filter(p=>p.clef===cl);
+    S.seqClef = cl; S.seq = [];
+    for(let i=0;i<S.arcadeLen;i++){
+      let p, tries=0;
+      do{ p = opciones[Math.floor(Math.random()*opciones.length)]; tries++; }
+      while(S.seq.length && p.dia===S.seq[S.seq.length-1].dia && p.alter===S.seq[S.seq.length-1].alter && tries<12);
+      const nota = dia2note(p.dia, p.alter);
+      S.seq.push({dia:p.dia, alter:p.alter, k:p.k, sound:nota.midi + 12*p.k, name:nameOf(nota)+nota.oct});
+    }
+    playSequence();
+  }
+
+  function playSequence(){
+    clearTimers();
+    S.mode = "arcadePlay"; S.playI = -1; S.progress = 0; S.wrongMs = 0;
+    $("noteName").innerHTML = "";
+    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+    $("skipBtn").textContent = "Otra ronda";
+    $("toneBtn").textContent = "Repetir";
+    $("arrow").className = "arrow"; $("arrow").textContent = "\u266A";
+    $("hold").style.width = "0%";
+    drawSequence({playIndex:-1});
+    $("msgMain").textContent = "Escucha la secuencia";
+    $("msgSub").textContent = S.seq.length + " notas · después las cantas en orden";
+    const DUR = 620, HUECO = 140;
+    S.seq.forEach((n, i)=>{
+      S.timers.push(setTimeout(()=>{
+        S.playI = i;
+        drawSequence({playIndex:i});
+        seqTone(n.sound, DUR);
+        $("msgSub").textContent = (i+1) + " de " + S.seq.length + (S.showName ? "  ·  " + midiLabel(n.sound) : "");
+      }, 400 + i*(DUR+HUECO)));
+    });
+    S.timers.push(setTimeout(()=>{
+      S.mode = "arcadeSing"; S.seqI = 0; S.progress = 0; S.wrongMs = 0;
+      S.lastGoodTs = 0; hist.length = 0;
+      drawSequence({});
+      $("msgMain").textContent = "Ahora cántalas en orden";
+      $("msgSub").textContent = "Desde la primera. Sostén cada una.";
+      if(navigator.vibrate) navigator.vibrate(40);
+    }, 400 + S.seq.length*(DUR+HUECO) + 300));
+  }
+
+  function arcadeStep(f, ts, dt){
+    const obj = S.seq[S.seqI];
+    if(!obj) return;
+    let cents = null, tuned = false, m = null;
+    if(f>0){
+      hist.push(f); if(hist.length>4) hist.shift();
+      m = freq2midi(median3());
+      cents = (m - obj.sound)*100;
+      tuned = Math.abs(cents) <= S.tol;
+    }else{ hist.length = 0; }
+
+    if(tuned){
+      S.progress += dt; S.lastGoodTs = ts; S.wrongMs = Math.max(0, S.wrongMs - dt);
+    }else{
+      if(ts - S.lastGoodTs > 160) S.progress = Math.max(0, S.progress - dt*1.6);
+      if(m!==null && Math.abs(cents) > 90) S.wrongMs += dt; else S.wrongMs = Math.max(0, S.wrongMs - dt);
+    }
+
+    $("hold").style.width = Math.min(100, S.progress/S.holdMs*100).toFixed(0)+"%";
+    drawSequence({});
+    say(f, m, cents, tuned);
+    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+
+    if(S.progress >= S.holdMs){
+      if(navigator.vibrate) navigator.vibrate(25);
+      ding();
+      S.seqI++; S.progress = 0; S.wrongMs = 0; hist.length = 0;
+      S.done++; $("stDone").textContent = S.done;
+      if(S.seqI >= S.seq.length) arcadeWin();
+      return;
+    }
+    if(S.wrongMs > 1100) arcadeError(m);
+  }
+
+  function arcadeWin(){
+    clearTimers();
+    S.mode = "arcadeDone";
+    S.round++; S.streak++;
+    S.bestStreak = Math.max(S.bestStreak, S.streak);
+    $("stDone").textContent = S.round;
+    $("stStreak").textContent = S.streak;
+    $("msgMain").textContent = "¡Ronda completa!";
+    $("msgSub").textContent = "Ronda " + (S.round+1) + " en camino…";
+    $("hold").style.width = "100%";
+    if(navigator.vibrate) navigator.vibrate([40,60,40]);
+    S.timers.push(setTimeout(()=>{ if(S.running) arcadeNewRound(); }, 1400));
+  }
+
+  function arcadeError(m){
+    clearTimers();
+    S.mode = "arcadeDone";
+    S.lives--;
+    S.wrongMs = 0; S.progress = 0; hist.length = 0;
+    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+    $("hold").style.width = "0%";
+    if(navigator.vibrate) navigator.vibrate(180);
+    if(S.lives > 0){
+      $("msgMain").textContent = "Esa no era";
+      $("msgSub").textContent = (m!==null ? "cantaste " + midiLabel(m) + "  ·  " : "") + "tocaba " + midiLabel(S.seq[S.seqI].sound);
+      S.timers.push(setTimeout(()=>{ if(S.running) playSequence(); }, 1800));
+    }else{
+      S.streak = 0; $("stStreak").textContent = 0;
+      $("msgMain").textContent = "Ronda perdida";
+      $("msgSub").textContent = "Empezamos otra con tres vidas.";
+      S.timers.push(setTimeout(()=>{
+        if(!S.running) return;
+        S.lives = 3; arcadeNewRound();
+      }, 2000));
+    }
+  }
+
+  function startPlaying(){
+    clearTimers();
+    if(S.play === "arcade"){
+      S.lives = 3;
+      $("stDoneLbl").textContent = "rondas ganadas";
+      $("stDone").textContent = S.round;
+      arcadeNewRound();
+    }else{
+      $("stDoneLbl").textContent = "notas logradas";
+      $("stDone").textContent = S.done;
+      $("skipBtn").textContent = "Saltar";
+      $("toneBtn").textContent = "Escuchar nota";
+      S.mode = "practice";
+      newTarget();
+    }
+  }
+
   /* ---------------- bucle ---------------- */
   function loop(ts){
     raf = requestAnimationFrame(loop);
@@ -791,6 +1016,8 @@
 
     if(S.mode === "measurePause"){ pauseStep(d.f, ts); return; }
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
+    if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
+    if(S.mode === "arcadeSing"){ arcadeStep(d.f, ts, dt); return; }
     if(S.mode === "anchor"){ measureStep(d.f, ts); return; }
     if(S.mode !== "practice"){ return; }
     if(!S.target) return;
@@ -825,11 +1052,12 @@
 
   function say(f, m, cents, tuned){
     const main=$("msgMain"), sub=$("msgSub"), arr=$("arrow"), msg=$("msg");
+    const objetivo = (S.mode==="arcadeSing" && S.seq[S.seqI]) ? S.seq[S.seqI].sound : S.sound;
     msg.classList.toggle("tuned", !!tuned);
     if(f<=0 || cents===null){
       arr.className="arrow"; arr.textContent="·";
       main.textContent = "Canta la nota";
-      sub.textContent = "Se pide " + midiLabel(S.sound) + "  ·  " + midi2freq(S.sound).toFixed(1) + " Hz";
+      sub.textContent = "Se pide " + midiLabel(objetivo) + "  ·  " + midi2freq(objetivo).toFixed(1) + " Hz";
       return;
     }
     const abs = Math.abs(cents), low = cents < 0;
@@ -844,7 +1072,7 @@
       const octs = Math.round(abs/1200);
       const txt = octs<=1 ? "una octava" : octs+" octavas";
       main.textContent = low ? "Estás "+txt+" abajo" : "Estás "+txt+" arriba";
-      sub.textContent = "oyes " + midiLabel(m) + "  ·  se pide " + midiLabel(S.sound);
+      sub.textContent = "oyes " + midiLabel(m) + "  ·  se pide " + midiLabel(objetivo);
       return;
     }
     const cuanto = abs>250 ? "bastante " : abs>90 ? "" : "un poco ";
@@ -889,6 +1117,7 @@
   $("startBtn").addEventListener("click", async ()=>{
     if(S.running){
       S.running = false;
+      clearTimers();
       cancelAnimationFrame(raf); raf=0;
       if(stream) stream.getTracks().forEach(t=>t.stop());
       if(ctx) ctx.close();
@@ -923,16 +1152,18 @@
     S.running = true; S.lastTs = 0;
     $("startBtn").textContent = "Detener";
     $("toneBtn").disabled = false; $("skipBtn").disabled = false;
-    if(!S.tess) beginMeasure(); else { S.mode="practice"; newTarget(); }
+    if(!S.tess) beginMeasure(); else startPlaying();
     raf = requestAnimationFrame(loop);
   });
 
   $("toneBtn").addEventListener("click", ()=>{
     if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
+    if(S.mode==="arcadeSing" || S.mode==="arcadePlay"){ playSequence(); return; }
     playTone();
   });
   $("skipBtn").addEventListener("click", ()=>{
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
+    if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
     S.streak=0; $("stStreak").textContent=0; newTarget();
   });
@@ -1015,6 +1246,15 @@
     S.trim = e.target.value;
     applyTrim();
     if(S.running && S.mode==="practice") newTarget();
+  });
+  $("selPlay").addEventListener("change", e=>{
+    S.play = e.target.value;
+    if(S.running && S.tess && S.mode!=="anchor" && S.mode!=="measurePause"
+       && S.mode!=="scanDown" && S.mode!=="scanUp") startPlaying();
+  });
+  $("selLen").addEventListener("change", e=>{
+    S.arcadeLen = Number(e.target.value);
+    if(S.running && S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); }
   });
   bindSel("selStep","scanStep",Number);
   bindSel("selTol","tol",Number);
