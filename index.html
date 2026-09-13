@@ -211,6 +211,14 @@
       </select>
     </div>
     <div class="row">
+      <div><label for="selTimbre">Timbre</label><small>Con qué sonido te da la referencia.</small></div>
+      <select id="selTimbre">
+        <option value="voz" selected>Voz («a»)</option>
+        <option value="piano">Piano</option>
+        <option value="simple">Tono simple</option>
+      </select>
+    </div>
+    <div class="row">
       <div><label>Mostrar el nombre</label><small>Apágalo para leer de verdad.</small></div>
       <div class="sw on" id="swName" role="switch" aria-checked="true" tabindex="0"><i></i></div>
     </div>
@@ -273,7 +281,7 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
-    play:"read", arcadeLen:5, seq:[], seqI:0, seqClef:"treble", playI:-1,
+    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -750,16 +758,7 @@
     probeTone(m);
   }
 
-  function probeTone(m){
-    if(!ctx) return;
-    const o=ctx.createOscillator(), g=ctx.createGain();
-    o.type="triangle"; o.frequency.value = midi2freq(m);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime+0.02);
-    g.gain.setValueAtTime(0.18, ctx.currentTime+0.7);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+1.0);
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+1.05);
-  }
+  function probeTone(m){ sound(m, 800); }
 
   function scanStep(f, ts, dt){
     let cents=null, tuned=false, m=null;
@@ -883,16 +882,107 @@
     staffEl.insertAdjacentHTML("beforeend", s);
   }
 
-  function seqTone(m, ms){
-    if(!ctx) return;
-    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
-    o.type="triangle"; o.frequency.value = midi2freq(m);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.2, t+0.02);
-    g.gain.setValueAtTime(0.2, t+ms/1000*0.8);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+ms/1000);
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(t+ms/1000+0.05);
+  /* ---------------- síntesis ---------------- */
+  let master=null, pWave=null;
+
+  function makeIR(dur, decay){
+    const sr = ctx.sampleRate, n = Math.floor(sr*dur), b = ctx.createBuffer(2, n, sr);
+    for(let c=0;c<2;c++){
+      const d = b.getChannelData(c);
+      for(let i=0;i<n;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/n, decay);
+    }
+    return b;
   }
+
+  function initSynth(){
+    master = ctx.createGain(); master.gain.value = 0.85;
+    master.connect(ctx.destination);
+    try{
+      const conv = ctx.createConvolver();
+      conv.buffer = makeIR(1.1, 2.6);
+      const wet = ctx.createGain(); wet.gain.value = 0.18;
+      master.connect(wet); wet.connect(conv); conv.connect(ctx.destination);
+    }catch(e){ /* sin reverb, no pasa nada */ }
+  }
+
+  function pianoWave(){
+    if(pWave) return pWave;
+    const amp = [0, 1, 0.52, 0.34, 0.21, 0.13, 0.09, 0.06, 0.04, 0.025, 0.015];
+    const real = new Float32Array(amp.length), imag = new Float32Array(amp.length);
+    for(let i=0;i<amp.length;i++) imag[i] = amp[i];
+    pWave = ctx.createPeriodicWave(real, imag, {disableNormalization:false});
+    return pWave;
+  }
+
+  function env(g, t, dur, atk, rel, peak){
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t+atk);
+    g.gain.setValueAtTime(peak, t+Math.max(atk, dur-rel));
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur+rel);
+  }
+
+  // Un solo punto de salida para todos los tonos de la app.
+  function sound(m, ms){
+    if(!ctx) return;
+    if(!master) initSynth();
+    const t = ctx.currentTime, f = midi2freq(m), dur = Math.max(0.15, ms/1000);
+    const g = ctx.createGain();
+    g.connect(master);
+
+    if(S.timbre === "voz"){
+      const o = ctx.createOscillator();
+      o.type = "sawtooth"; o.frequency.value = f;
+      // vibrato que entra poco a poco, como en una voz sostenida
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = 5.2;
+      lg.gain.setValueAtTime(0, t);
+      lg.gain.linearRampToValueAtTime(f*0.007, t+0.45);
+      lfo.connect(lg); lg.connect(o.frequency);
+      lfo.start(t); lfo.stop(t+dur+0.4);
+      // formantes de la vocal «a»: lo que hace que suene a garganta y no a sierra
+      [[700,1.0,9],[1220,0.55,11],[2600,0.22,13]].forEach(fm=>{
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass"; bp.frequency.value = fm[0]; bp.Q.value = fm[2];
+        const ga = ctx.createGain(); ga.gain.value = fm[1];
+        o.connect(bp); bp.connect(ga); ga.connect(g);
+      });
+      // algo de fuente directa para que el fundamental no se pierda
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = f*2.4;
+      const dg = ctx.createGain(); dg.gain.value = 0.55;
+      o.connect(lp); lp.connect(dg); dg.connect(g);
+      o.start(t); o.stop(t+dur+0.4);
+      env(g, t, dur, 0.09, 0.22, 0.28);
+
+    }else if(S.timbre === "piano"){
+      const o = ctx.createOscillator();
+      try{ o.setPeriodicWave(pianoWave()); }catch(e){ o.type = "triangle"; }
+      o.frequency.value = f;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(Math.min(9000, f*14), t);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(400, f*3), t+0.6);
+      o.connect(lp); lp.connect(g);
+      o.start(t); o.stop(t+dur+0.5);
+      // percusivo: ataque instantáneo y caída continua, sin meseta
+      const largo = dur + 0.45;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.5, t+0.006);
+      g.gain.exponentialRampToValueAtTime(0.14, t+Math.min(0.5, largo*0.4));
+      g.gain.exponentialRampToValueAtTime(0.0001, t+largo);
+
+    }else{
+      const o = ctx.createOscillator();
+      o.type = "triangle"; o.frequency.value = f;
+      o.connect(g); o.start(t); o.stop(t+dur+0.3);
+      env(g, t, dur, 0.02, 0.14, 0.22);
+    }
+
+    // el micrófono no debe escuchar nuestro propio tono
+    S.muteUntil = performance.now() + ms + 260;
+  }
+
+  function seqTone(m, ms){ sound(m, ms); }
 
   function livesText(){ return " · " + "\u2665".repeat(S.lives) + "\u2661".repeat(3-S.lives); }
 
@@ -1056,8 +1146,14 @@
     const dt = S.lastTs ? Math.min(120, ts - S.lastTs) : 40;
     S.lastTs = ts;
 
-    analyser.getFloatTimeDomainData(buf);
-    const d = detectPitch(buf, ctx.sampleRate);
+    const mudo = ts < S.muteUntil;
+    let d = {f:-1};
+    if(!mudo){
+      analyser.getFloatTimeDomainData(buf);
+      d = detectPitch(buf, ctx.sampleRate);
+    }else{
+      hist.length = 0;
+    }
 
     if(S.mode === "measurePause"){ pauseStep(d.f, ts); return; }
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
@@ -1139,23 +1235,19 @@
 
   function ding(){
     if(!ctx) return;
-    const o=ctx.createOscillator(), g=ctx.createGain();
-    o.type="sine"; o.frequency.value = 1760;
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.3);
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+0.31);
+    const t = ctx.currentTime, g = ctx.createGain();
+    const o = ctx.createOscillator();
+    o.type = "sine"; o.frequency.value = 1760;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.28);
+    o.connect(g); g.connect(master || ctx.destination);
+    o.start(t); o.stop(t+0.3);
   }
 
   function playTone(){
     if(!ctx || S.sound===null || S.mode!=="practice") return;
-    const o=ctx.createOscillator(), g=ctx.createGain();
-    o.type="triangle"; o.frequency.value = midi2freq(S.sound);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime+0.02);
-    g.gain.setValueAtTime(0.2, ctx.currentTime+0.9);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+1.25);
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+1.3);
+    sound(S.sound, 1100);
   }
 
   /* ---------------- controles ---------------- */
@@ -1305,6 +1397,10 @@
   $("selLen").addEventListener("change", e=>{
     S.arcadeLen = Number(e.target.value);
     if(S.running && S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); }
+  });
+  $("selTimbre").addEventListener("change", e=>{
+    S.timbre = e.target.value;
+    if(S.running && ctx && S.mode==="practice" && S.sound!==null) sound(S.sound, 900);
   });
   bindSel("selStep","scanStep",Number);
   bindSel("selTol","tol",Number);
