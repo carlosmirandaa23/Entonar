@@ -278,31 +278,35 @@
 
   // En el sistema doble los dos pentagramas comparten una sola rejilla:
   // y = 268 - 6*dia. El do central cae en la línea que se omite en medio.
-  const G_TOP = [40,52,64,76,88], G_BOT = [112,124,136,148,160], G_MID = 100;
-  const yGrand = dia => 268 - 6*dia;
+  const G_TOP = [60,72,84,96,108], G_BOT = [132,144,156,168,180], G_MID = 120;
+  const yGrand = dia => 288 - 6*dia;
 
   function drawGrand(note, opts){
     if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}");
     let s = "";
     for(const y of G_TOP.concat(G_BOT))
       s += '<line x1="30" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
-    s += '<path d="M28 40 C16 56, 28 64, 20 100 C28 136, 16 144, 28 160" fill="none" stroke="#2B3550" stroke-width="2.4" stroke-linecap="round"/>';
-    s += '<line x1="30" y1="40" x2="30" y2="160" stroke="#2B3550" stroke-width="1.4"/>';
+    s += '<path d="M28 60 C16 78, 28 88, 20 120 C28 152, 16 162, 28 180" fill="none" stroke="#2B3550" stroke-width="2.4" stroke-linecap="round"/>';
+    s += '<line x1="30" y1="60" x2="30" y2="180" stroke="#2B3550" stroke-width="1.4"/>';
+    // Cada clave recortada a su propio pentagrama: así, aunque la fuente del
+    // sistema dibuje el glifo más grande de lo previsto, no invade al otro.
+    s += '<clipPath id="cpT"><rect x="30" y="26" width="120" height="94"/></clipPath>';
+    s += '<clipPath id="cpB"><rect x="30" y="120" width="120" height="90"/></clipPath>';
     if(glyphOK){
-      s += '<text x="44" y="86" font-size="86" fill="#2B3550" font-family="serif">'+CLEF.treble.glyph+'</text>';
-      s += '<text x="44" y="125" font-size="54" fill="#2B3550" font-family="serif">'+CLEF.bass.glyph+'</text>';
+      s += '<text x="44" y="106" font-size="78" fill="#2B3550" font-family="serif" clip-path="url(#cpT)">'+CLEF.treble.glyph+'</text>';
+      s += '<text x="44" y="145" font-size="54" fill="#2B3550" font-family="serif" clip-path="url(#cpB)">'+CLEF.bass.glyph+'</text>';
     }else{
-      s += '<text x="42" y="70" font-size="40" fill="#2B3550" font-family="Georgia,serif" font-style="italic">G</text>';
-      s += '<text x="42" y="142" font-size="34" fill="#2B3550" font-family="Georgia,serif" font-style="italic">F</text>';
+      s += '<text x="42" y="92" font-size="40" fill="#2B3550" font-family="Georgia,serif" font-style="italic">G</text>';
+      s += '<text x="42" y="162" font-size="34" fill="#2B3550" font-family="Georgia,serif" font-style="italic">F</text>';
     }
 
     if(note){
       const y = yGrand(note.dia);
-      if(y < 40) for(let yy=28; yy>=y-1; yy-=12)
+      if(y < 60) for(let yy=48; yy>=y-1; yy-=12)
         s += '<line x1="'+(X_NOTE-17)+'" y1="'+yy+'" x2="'+(X_NOTE+17)+'" y2="'+yy+'" stroke="#2B3550" stroke-width="1.4"/>';
       else if(y === G_MID)
         s += '<line x1="'+(X_NOTE-17)+'" y1="'+G_MID+'" x2="'+(X_NOTE+17)+'" y2="'+G_MID+'" stroke="#2B3550" stroke-width="1.4"/>';
-      else if(y > 160) for(let yy=172; yy<=y+1; yy+=12)
+      else if(y > 180) for(let yy=192; yy<=y+1; yy+=12)
         s += '<line x1="'+(X_NOTE-17)+'" y1="'+yy+'" x2="'+(X_NOTE+17)+'" y2="'+yy+'" stroke="#2B3550" stroke-width="1.4"/>';
 
       if(note.alter!==0)
@@ -326,13 +330,13 @@
         s += '<circle cx="'+X_NOTE+'" cy="'+y+'" r="'+R+'" fill="none" stroke="#2F8F72" stroke-width="3" stroke-linecap="round" stroke-dasharray="'+(p*CIRC).toFixed(1)+' '+CIRC.toFixed(1)+'" transform="rotate(-90 '+X_NOTE+' '+y+')"/>';
 
       if(opts.voiceCents!==null && opts.voiceCents!==undefined){
-        const vy = Math.max(10, Math.min(205, y - (opts.voiceCents/100)*3.5));
+        const vy = Math.max(14, Math.min(232, y - (opts.voiceCents/100)*3.5));
         const col = opts.tuned ? "#2F8F72" : "#B4542F";
         s += '<line x1="20" y1="'+vy.toFixed(1)+'" x2="'+(X_NOTE+46)+'" y2="'+vy.toFixed(1)+'" stroke="'+col+'" stroke-width="2" opacity=".75"/>';
         s += '<circle cx="'+(X_NOTE+52)+'" cy="'+vy.toFixed(1)+'" r="4.5" fill="'+col+'"/>';
       }
     }
-    staffEl.setAttribute("viewBox", "0 0 340 215");
+    staffEl.setAttribute("viewBox", "0 0 340 246");
     staffEl.innerHTML = s;
   }
 
