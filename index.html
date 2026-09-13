@@ -151,6 +151,36 @@
         <option value="read" selected>Lectura</option>
         <option value="arcade">Arcade</option>
         <option value="ancla">Ancla (memoria de altura)</option>
+        <option value="vocaliz">Vocalises (escalas)</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selEcho">Eco: silencio antes de cantar</label><small>En modo lectura: suena la nota, se calla, y hasta entonces cantas.</small></div>
+      <select id="selEcho">
+        <option value="0" selected>Sin eco</option>
+        <option value="1500">1.5 s</option>
+        <option value="3000">3 s</option>
+        <option value="5000">5 s</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selPatron">Patrón del vocalise</label></div>
+      <select id="selPatron">
+        <option value="escalera">Escalera ↑ (tono arriba, semitono abajo)</option>
+        <option value="escaleraB">Escalera ↓ (tono abajo, semitono arriba)</option>
+        <option value="esc5" selected>5 notas: sube y baja</option>
+        <option value="desc5">5 notas bajando</option>
+        <option value="arp">Arpegio 1-3-5-3-1</option>
+        <option value="arp8">Arpegio a la octava</option>
+        <option value="q51">Quinta: 5-1</option>
+        <option value="oct">Octava: 1-8-1</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selDir">Dirección</label><small>Bajando es lo que recomiendan para empezar: la voz se relaja al descender.</small></div>
+      <select id="selDir">
+        <option value="-1" selected>Bajando medio tono</option>
+        <option value="1">Subiendo medio tono</option>
       </select>
     </div>
     <div class="row">
@@ -325,7 +355,8 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
-    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null, seq:[], seqI:0, seqClef:"treble", playI:-1,
+    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null,
+    echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -608,6 +639,20 @@
       : "";
     drawStaff(S.target, S.clef, {progress:0, voiceCents:null, oct8:o8});
     if(S.running) bordonPulso();
+    if(S.running && S.echo > 0){
+      S.mode = "echoWait";
+      const dur = 1100;
+      S.timers.push(setTimeout(()=>{ if(S.running) sound(S.sound, dur); }, 250));
+      S.echoAt = performance.now() + 250 + dur + S.echo;
+      S.timers.push(setTimeout(()=>{
+        if(!S.running) return;
+        S.mode = "practice"; S.progress = 0; S.lastGoodTs = 0; hist.length = 0;
+        $("msgMain").textContent = "Ahora canta";
+        $("msgSub").textContent = "De memoria, sin volver a oírla.";
+        if(navigator.vibrate) navigator.vibrate(30);
+      }, 250 + dur + S.echo));
+      return;
+    }
     if(S.autoTone && S.running) playTone();
   }
 
@@ -901,7 +946,7 @@
     const cl = S.seqClef;
     drawStaff(null, cl, {});
     const n = S.seq.length;
-    const step = n>1 ? Math.min(44, 188/(n-1)) : 0;
+    const step = n>1 ? Math.min(44, 206/(n-1)) : 0;
     const x0 = 112;
     let s = "";
     S.seq.forEach((it, i)=>{
@@ -1206,17 +1251,23 @@
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     $("stDone").textContent = S.round;
     $("stStreak").textContent = S.streak;
-    $("msgMain").textContent = "¡Ronda completa!";
-    $("msgSub").textContent = "Ronda " + (S.round+1) + " en camino…";
+    const voc = S.play === "vocaliz";
+    $("msgMain").textContent = voc ? "Bien — transponemos" : "¡Ronda completa!";
+    $("msgSub").textContent = voc
+      ? (S.exDir<0 ? "Medio tono abajo" : "Medio tono arriba")
+      : "Ronda " + (S.round+1) + " en camino…";
     $("hold").style.width = "100%";
     if(navigator.vibrate) navigator.vibrate([40,60,40]);
-    S.timers.push(setTimeout(()=>{ if(S.running) arcadeNewRound(); }, 1400));
+    S.timers.push(setTimeout(()=>{
+      if(!S.running) return;
+      if(voc) vocalizSiguiente(); else arcadeNewRound();
+    }, 1400));
   }
 
   function arcadeError(m){
     clearTimers();
     S.mode = "arcadeDone";
-    S.lives--;
+    if(S.play !== "vocaliz") S.lives--;
     S.wrongMs = 0; S.progress = 0; hist.length = 0; S.nSum = 0; S.nN = 0;
     if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
     $("badge").textContent = CLEF[S.seqClef].label + livesText();
@@ -1258,6 +1309,12 @@
       anclaNueva();
       return;
     }
+    if(S.play === "vocaliz"){
+      $("stDoneLbl").textContent = "notas logradas";
+      S.exStart = 0;
+      vocalizNueva();
+      return;
+    }
     if(S.play === "arcade"){
       S.lives = 3;
       $("stDoneLbl").textContent = "rondas ganadas";
@@ -1295,6 +1352,14 @@
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
     if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
     if(S.mode === "arcadeSing"){ arcadeStep(d.f, ts, dt); return; }
+    if(S.mode === "echoWait"){
+      hist.length = 0;
+      const falta = Math.max(0, S.echoAt - ts);
+      $("msgMain").textContent = falta > S.echo ? "Escucha" : "Retén la nota…";
+      $("msgSub").textContent = falta > S.echo ? "" : (falta/1000).toFixed(1) + " s";
+      $("hold").style.width = (100 - Math.min(100, falta/(S.echo||1)*100)).toFixed(0)+"%";
+      return;
+    }
     if(S.mode === "anclaShow"){ hist.length = 0; return; }
     if(S.mode === "anclaSing"){ anclaStep(d.f, ts); return; }
     if(S.mode === "anchor"){ measureStep(d.f, ts); return; }
@@ -1406,6 +1471,76 @@
     S.timers.push(setTimeout(()=>{ if(S.running) sound(base+7, 1100); }, 120));
   }
 
+  /* ---------------- vocalises ---------------- */
+  const PATRONES = {
+    // Escalera: +1 tono / -1 semitono. Cada nota se ataca desde una
+    // dirección distinta, así que no hay inercia de escala en la que apoyarse.
+    escalera:  [0,2,1,3,2,4,3,5,4],
+    escaleraB: [0,-2,-1,-3,-2,-4,-3,-5,-4],
+    esc5:  [0,2,4,5,7,5,4,2,0],
+    desc5: [7,5,4,2,0],
+    arp:   [0,4,7,4,0],
+    arp8:  [0,4,7,12,7,4,0],
+    q51:   [7,0],
+    oct:   [0,12,0]
+  };
+
+  function claveDe(m){
+    if(S.clefMode==="grand") return "grand";
+    if(CLEF[S.clefMode] && S.clefMode!=="grand" && S.clefMode!=="auto") return S.clefMode;
+    return m >= 59 ? "treble" : "bass";
+  }
+
+  function itemDeMidi(m, cl){
+    const n = midi2diaNote(m);
+    let dia = n.dia, k = 0;
+    if(cl !== "grand"){
+      while(dia < CLEF[cl].bottom - 6){ dia += 7; k -= 1; }
+      while(dia > CLEF[cl].top + 6){ dia -= 7; k += 1; }
+    }
+    return {dia:dia, alter:n.alter, k:k, sound:m};
+  }
+
+  function vocalizNueva(){
+    clearTimers();
+    const p = PATRONES[S.patron] || PATRONES.esc5;
+    const lo = Math.min.apply(null,p), hi = Math.max.apply(null,p);
+    const minIni = (S.tess ? S.tess.lo : 48) - lo;
+    const maxIni = (S.tess ? S.tess.hi : 72) - hi;
+    if(!S.exStart){
+      if(S.patron === "escalera") S.exStart = minIni;
+      else if(S.patron === "escaleraB") S.exStart = maxIni;
+      else S.exStart = S.exDir < 0 ? maxIni : minIni;
+    }
+    if(S.exStart > maxIni || S.exStart < minIni){
+      if(S.patron === "escalera" || S.patron === "escaleraB"){
+        S.patron = S.patron === "escalera" ? "escaleraB" : "escalera";
+        const q = PATRONES[S.patron];
+        const qlo = Math.min.apply(null,q), qhi = Math.max.apply(null,q);
+        S.exStart = S.patron === "escalera" ? (S.tess.lo - qlo) : (S.tess.hi - qhi);
+        const sel = $("selPatron"); if(sel) sel.value = S.patron;
+        vocalizNueva();
+        return;
+      }
+      S.exDir = -S.exDir;
+      S.exStart = Math.max(minIni, Math.min(maxIni, S.exStart));
+    }
+    const cl = claveDe(S.exStart + Math.round((lo+hi)/2));
+    S.seqClef = cl;
+    S.seq = p.map(off => itemDeMidi(S.exStart + off, cl));
+    S.lives = 3;
+    playSequence();
+  }
+
+  function vocalizSiguiente(){
+    // La escalera ya recorre terreno por sí misma: la transposición continúa
+    // el viaje en su mismo sentido en vez de pelearse con él.
+    if(S.patron === "escalera") S.exStart += 5;
+    else if(S.patron === "escaleraB") S.exStart -= 5;
+    else S.exStart += S.exDir;
+    vocalizNueva();
+  }
+
   /* ---------------- modo ancla ---------------- */
   function anclaNueva(){
     clearTimers();
@@ -1476,6 +1611,7 @@
         tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
         play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
         key: S.key, label: S.label, drone: S.drone, anchor: S.anchor, anclaLog: S.anclaLog,
+        echo: S.echo, patron: S.patron, exDir: S.exDir,
         clefMode: S.clefMode, extra: S.extra, acc: S.acc,
         tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
         showName: S.showName, autoTone: S.autoTone
@@ -1492,7 +1628,8 @@
     if(typeof d.key === "number") S.key = d.key;
     if(typeof d.anchor === "number") S.anchor = d.anchor;
     if(Array.isArray(d.anclaLog)) S.anclaLog = d.anclaLog;
-    ["arcadeLen","extra","tol","holdMs","scanStep"].forEach(k=>{ if(typeof d[k]==="number") S[k]=d[k]; });
+    ["arcadeLen","extra","tol","holdMs","scanStep","echo","exDir"].forEach(k=>{ if(typeof d[k]==="number") S[k]=d[k]; });
+    if(d.patron) S.patron = d.patron;
     ["showName","autoTone"].forEach(k=>{ if(typeof d[k]==="boolean") S[k]=d[k]; });
     const set = (id,v)=>{ const el=$(id); if(el) el.value = String(v); };
     set("selFocus",S.focus); set("selPlay",S.play); set("selLen",S.arcadeLen);
@@ -1500,6 +1637,7 @@
     set("selAcc",S.acc); set("selTol",S.tol); set("selHold",S.holdMs);
     set("selStep",S.scanStep); set("selTrim",S.trim);
     set("selLabel",S.label); set("selKey",S.key); set("selDrone",S.drone); set("selAnchor",S.anchor);
+    set("selEcho",S.echo); set("selPatron",S.patron); set("selDir",S.exDir);
     [["swName","showName"],["swAuto","autoTone"]].forEach(pair=>{
       const el=$(pair[0]); if(!el) return;
       el.classList.toggle("on", S[pair[1]]);
@@ -1663,6 +1801,7 @@
   $("skipBtn").addEventListener("click", ()=>{
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.play==="ancla" && S.tess){ anclaNueva(); return; }
+    if(S.play==="vocaliz" && S.tess){ vocalizSiguiente(); return; }
     if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
     if(S.sound!==null && S.progress < 200) regNota(S.sound, 0, true);
@@ -1799,6 +1938,17 @@
     S.drone = e.target.value;
     pararBordon();
     if(S.drone==="continuo" && S.running && S.play!=="ancla") bordonContinuo();
+    guardar();
+  });
+  $("selEcho").addEventListener("change", e=>{ S.echo = Number(e.target.value); guardar(); });
+  $("selPatron").addEventListener("change", e=>{
+    S.patron = e.target.value; S.exStart = 0;
+    if(S.running && S.play==="vocaliz") vocalizNueva();
+    guardar();
+  });
+  $("selDir").addEventListener("change", e=>{
+    S.exDir = Number(e.target.value); S.exStart = 0;
+    if(S.running && S.play==="vocaliz") vocalizNueva();
     guardar();
   });
   $("selFocus").addEventListener("change", e=>{ S.focus = e.target.value; guardar(); });
