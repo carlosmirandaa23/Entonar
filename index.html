@@ -295,13 +295,49 @@
   }
   const yOfDia = (dia, clef) => Y_BOTTOM - (dia - CLEF[clef].bottom)*STEP;
 
+  // El tamaño real de los glifos musicales depende de la fuente del sistema,
+  // así que los medimos y los encajamos en la caja que les toca.
+  const boxCache = {};
+  function glyphBox(ch){
+    if(ch in boxCache) return boxCache[ch];
+    let r = null;
+    try{
+      const c = document.createElement("canvas").getContext("2d");
+      c.font = "100px serif";
+      const m = c.measureText(ch);
+      const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+      if(asc > 0 && (asc+desc) > 10) r = {asc:asc, h:asc+desc};
+    }catch(e){ r = null; }
+    return (boxCache[ch] = r);
+  }
+
+  // topLine: y de la línea superior del pentagrama donde va la clave.
+  function clefSvg(kind, topLine, x){
+    const bottomLine = topLine + 4*GAP;
+    const C = CLEF[kind];
+    const box = glyphOK ? glyphBox(C.glyph) : null;
+    if(box){
+      // sol: ocupa 8 espacios, con la espiral sobre la 2.ª línea.
+      // fa: ocupa 3.4 espacios desde la línea superior, el ojo sobre la 4.ª.
+      const yTop = kind==="treble" ? topLine - 2*GAP : topLine - 0.2*GAP;
+      const H    = kind==="treble" ? 8*GAP : 3.4*GAP;
+      const size = H/box.h*100;
+      const base = yTop + box.asc*size/100;
+      return '<text x="'+x+'" y="'+base.toFixed(1)+'" font-size="'+size.toFixed(1)+'" fill="#2B3550" font-family="serif">'+C.glyph+'</text>';
+    }
+    const letra = kind==="treble" ? "G" : "F";
+    const ly = kind==="treble" ? topLine + 2.4*GAP : topLine + 1.6*GAP;
+    return '<text x="'+(x-2)+'" y="'+ly+'" font-size="'+(kind==="treble"?44:38)+'" fill="#2B3550" font-family="Georgia,serif" font-style="italic">'+letra+'</text>'
+         + '<line x1="'+(x-6)+'" y1="'+(bottomLine+6)+'" x2="'+(x-6)+'" y2="'+(topLine-6)+'" stroke="#2B3550" stroke-width="1.4"/>';
+  }
+
   // En el sistema doble los dos pentagramas comparten una sola rejilla:
   // y = 268 - 6*dia. El do central cae en la línea que se omite en medio.
   const G_TOP = [60,72,84,96,108], G_BOT = [132,144,156,168,180], G_MID = 120;
   const yGrand = dia => 288 - 6*dia;
 
   function drawGrand(note, opts){
-    if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}");
+    if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}") && supportsGlyph("\u{1D122}");
     let s = "";
     for(const y of G_TOP.concat(G_BOT))
       s += '<line x1="30" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
@@ -311,13 +347,8 @@
     // sistema dibuje el glifo más grande de lo previsto, no invade al otro.
     s += '<clipPath id="cpT"><rect x="30" y="26" width="120" height="94"/></clipPath>';
     s += '<clipPath id="cpB"><rect x="30" y="120" width="120" height="90"/></clipPath>';
-    if(glyphOK){
-      s += '<text x="44" y="106" font-size="78" fill="#2B3550" font-family="serif" clip-path="url(#cpT)">'+CLEF.treble.glyph+'</text>';
-      s += '<text x="44" y="145" font-size="54" fill="#2B3550" font-family="serif" clip-path="url(#cpB)">'+CLEF.bass.glyph+'</text>';
-    }else{
-      s += '<text x="42" y="92" font-size="40" fill="#2B3550" font-family="Georgia,serif" font-style="italic">G</text>';
-      s += '<text x="42" y="162" font-size="34" fill="#2B3550" font-family="Georgia,serif" font-style="italic">F</text>';
-    }
+    s += '<g clip-path="url(#cpT)">' + clefSvg("treble", G_TOP[0], 44) + '</g>';
+    s += '<g clip-path="url(#cpB)">' + clefSvg("bass",  G_BOT[0], 44) + '</g>';
 
     if(note){
       const y = yGrand(note.dia);
@@ -363,7 +394,7 @@
     opts = opts || {};
     if(clef === "grand"){ drawGrand(note, opts); return; }
     staffEl.setAttribute("viewBox", "0 0 340 200");
-    if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}");
+    if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}") && supportsGlyph("\u{1D122}");
     let s = "";
     for(let k=0;k<5;k++){
       const y = Y_BOTTOM - k*GAP;
@@ -378,12 +409,8 @@
       s += '<path d="M36 '+(cy+23)+' C55 '+(cy+23)+', 53 '+(cy+6)+', 37 '+(cy+2)+'" fill="none" stroke="#2B3550" stroke-width="3.4" stroke-linecap="round"/>';
       s += '<circle cx="41" cy="'+(cy-9)+'" r="2.1" fill="#2B3550"/>';
       s += '<circle cx="41" cy="'+(cy+9)+'" r="2.1" fill="#2B3550"/>';
-    }else if(glyphOK){
-      const size = clef==="treble"?86:54, cy = clef==="treble"?128:95;
-      s += '<text x="30" y="'+cy+'" font-size="'+size+'" fill="#2B3550" font-family="serif">'+CLEF[clef].glyph+'</text>';
     }else{
-      s += '<text x="26" y="'+(clef==="treble"?96:84)+'" font-size="'+(clef==="treble"?46:40)+'" fill="#2B3550" font-family="Georgia,serif" font-style="italic">'+CLEF[clef].fb+'</text>';
-      s += '<line x1="24" y1="'+(Y_BOTTOM+8)+'" x2="24" y2="'+(Y_BOTTOM-4*GAP-8)+'" stroke="#2B3550" stroke-width="1.4"/>';
+      s += clefSvg(clef, Y_BOTTOM-4*GAP, 30);
     }
 
     if(note){
@@ -490,6 +517,11 @@
       lo = Math.round(mid-6); hi = Math.round(mid+6);
     }
     S.tess = {lo:lo, hi:hi};
+    if(!S.running){
+      $("msgMain").textContent = "Listo para empezar";
+      $("msgSub").textContent = "Tu rango: " + midiLabel(lo) + " a " + midiLabel(hi)
+        + "  ·  modo " + (S.play==="arcade" ? "arcade" : "lectura");
+    }
     $("stTess").textContent = midiLabel(lo)+"–"+midiLabel(hi);
     const recortado = (t.lo || t.hi)
       ? "  ·  medido " + midiLabel(S.tessFull.lo) + "–" + midiLabel(S.tessFull.hi)
@@ -822,8 +854,8 @@
     const cl = S.seqClef;
     drawStaff(null, cl, {});
     const n = S.seq.length;
-    const step = n>1 ? Math.min(46, 200/(n-1)) : 0;
-    const x0 = 100;
+    const step = n>1 ? Math.min(44, 188/(n-1)) : 0;
+    const x0 = 112;
     let s = "";
     S.seq.forEach((it, i)=>{
       const x = x0 + i*step;
@@ -1263,6 +1295,10 @@
   });
   $("selPlay").addEventListener("change", e=>{
     S.play = e.target.value;
+    if(!S.running && S.tess){
+      $("msgSub").textContent = "Tu rango: " + midiLabel(S.tess.lo) + " a " + midiLabel(S.tess.hi)
+        + "  ·  modo " + (S.play==="arcade" ? "arcade" : "lectura");
+    }
     if(S.running && S.tess && S.mode!=="anchor" && S.mode!=="measurePause"
        && S.mode!=="scanDown" && S.mode!=="scanUp") startPlaying();
   });
