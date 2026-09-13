@@ -206,6 +206,8 @@
         <option value="escalera">Escalera ↑ (tono arriba, semitono abajo)</option>
         <option value="escaleraB">Escalera ↓ (tono abajo, semitono arriba)</option>
         <option value="escaleraIV">Escalera ↑↓ (ida y vuelta)</option>
+        <option value="terceras">Terceras ↑ (1-3-2-4, 3-5-4-6…)</option>
+        <option value="tercerasB">Terceras ↓ (8-6-7-5…)</option>
         <option value="esc5" selected>5 notas: sube y baja</option>
         <option value="desc5">5 notas bajando</option>
         <option value="arp">Arpegio 1-3-5-3-1</option>
@@ -451,10 +453,11 @@
   const yGrand = dia => 288 - 6*dia;
 
   function drawGrand(note, opts){
+    const W = (opts && opts.width) || 340;
     if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}") && supportsGlyph("\u{1D122}");
     let s = "";
     for(const y of G_TOP.concat(G_BOT))
-      s += '<line x1="30" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
+      s += '<line x1="30" y1="'+y+'" x2="'+(W-14)+'" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
     s += '<path d="M28 60 C16 78, 28 88, 20 120 C28 152, 16 162, 28 180" fill="none" stroke="#2B3550" stroke-width="2.4" stroke-linecap="round"/>';
     s += '<line x1="30" y1="60" x2="30" y2="180" stroke="#2B3550" stroke-width="1.4"/>';
     // Cada clave recortada a su propio pentagrama: así, aunque la fuente del
@@ -500,19 +503,20 @@
         s += '<circle cx="'+(X_NOTE+52)+'" cy="'+vy.toFixed(1)+'" r="4.5" fill="'+col+'"/>';
       }
     }
-    staffEl.setAttribute("viewBox", "0 0 340 246");
+    staffEl.setAttribute("viewBox", "0 0 "+W+" 246");
     staffEl.innerHTML = s;
   }
 
   function drawStaff(note, clef, opts){
     opts = opts || {};
     if(clef === "grand"){ drawGrand(note, opts); return; }
-    staffEl.setAttribute("viewBox", "0 0 340 200");
+    const W = opts.width || 340;
+    staffEl.setAttribute("viewBox", "0 0 "+W+" 200");
     if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}") && supportsGlyph("\u{1D122}");
     let s = "";
     for(let k=0;k<5;k++){
       const y = Y_BOTTOM - k*GAP;
-      s += '<line x1="14" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
+      s += '<line x1="14" y1="'+y+'" x2="'+(W-14)+'" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
     }
     if(CLEF[clef].cLine){
       const cy = Y_BOTTOM - (CLEF[clef].cLine-1)*GAP;
@@ -975,10 +979,11 @@
   function drawSequence(opts){
     opts = opts || {};
     const cl = S.seqClef;
-    drawStaff(null, cl, {});
     const n = S.seq.length;
-    const step = n>1 ? Math.min(44, 216/(n-1)) : 0;
+    const step = n > 9 ? 26 : (n>1 ? Math.min(44, 216/(n-1)) : 0);
     const x0 = 100;
+    const W = Math.max(340, x0 + step*(n-1) + 40);
+    drawStaff(null, cl, {width:W});
     let s = "";
     S.seq.forEach((it, i)=>{
       const x = x0 + i*step;
@@ -1515,6 +1520,14 @@
   }
 
   /* ---------------- vocalises ---------------- */
+  // Patrones por grados de la escala mayor: el salto es diatónico, no fijo.
+  const MAYOR = [0,2,4,5,7,9,11];
+  const grado2semi = g => { const o = Math.floor(g/7); return o*12 + MAYOR[g - o*7]; };
+  const PATRONES_G = {
+    terceras:  [0,2,1,3,2,4,3,5,4,6,5,7,6,8,7],   // 1-3-2-4, 3-5-4-6, 5-7-6-8, 7-9-8
+    tercerasB: [7,5,6,4,5,3,4,2,3,1,2,0]          // la misma, bajando
+  };
+
   const PATRONES = {
     // Escalera: +1 tono / -1 semitono. Cada nota se ataca desde una
     // dirección distinta, así que no hay inercia de escala en la que apoyarse.
@@ -1548,7 +1561,8 @@
 
   function vocalizNueva(){
     clearTimers();
-    const p = PATRONES[S.patron] || PATRONES.esc5;
+    const diat = PATRONES_G[S.patron];
+    const p = diat ? diat.map(grado2semi) : (PATRONES[S.patron] || PATRONES.esc5);
     const lo = Math.min.apply(null,p), hi = Math.max.apply(null,p);
     const minIni = (S.tess ? S.tess.lo : 48) - lo;
     const maxIni = (S.tess ? S.tess.hi : 72) - hi;
@@ -1556,6 +1570,22 @@
       if(S.patron === "escalera") S.exStart = minIni;
       else if(S.patron === "escaleraB") S.exStart = maxIni;
       else S.exStart = S.exDir < 0 ? maxIni : minIni;
+      // los diatónicos arrancan en una tónica de verdad, no en cualquier nota
+      if(diat){
+        const base = S.exDir < 0 ? maxIni : minIni;
+        let t = S.key + 12*Math.round((base - S.key)/12);
+        while(t > maxIni) t -= 12;
+        while(t < minIni) t += 12;
+        if(t >= minIni && t <= maxIni) S.exStart = t;
+      }
+    }
+    if(diat){
+      // la tonalidad sigue al ejercicio, para que grados y bordón concuerden
+      const pc = ((S.exStart % 12) + 12) % 12;
+      if(pc !== S.key){
+        S.key = pc;
+        const sk = $("selKey"); if(sk) sk.value = String(pc);
+      }
     }
     if(S.exStart > maxIni || S.exStart < minIni){
       if(S.patron === "escalera" || S.patron === "escaleraB"){
