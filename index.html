@@ -58,6 +58,13 @@
   .sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--muted);transition:.16s}
   .sw.on{background:rgba(47,143,114,.25);border-color:var(--ok)}
   .sw.on i{left:25px;background:var(--ok)}
+  .ns{margin-top:10px;font-size:12px;color:var(--muted)}
+  .ns table{width:100%;border-collapse:collapse}
+  .ns td{padding:3px 0;vertical-align:middle}
+  .ns td.n{font-family:Georgia,serif;font-size:13px;color:var(--text);width:58px}
+  .ns td.c{width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  .ns .bar{height:6px;border-radius:99px;background:var(--ink-2);overflow:hidden}
+  .ns .bar i{display:block;height:100%}
   .note{color:var(--muted);font-size:12px;line-height:1.5;margin-top:18px}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -97,11 +104,23 @@
   <div class="stats">
     <div class="stat"><b id="stDone">0</b><span id="stDoneLbl">notas logradas</span></div>
     <div class="stat"><b id="stStreak">0</b><span>racha</span></div>
-    <div class="stat"><b id="stAvg">—</b><span>desviación media</span></div>
+    <div class="stat"><b id="stAvg">—</b><span>desviación media (¢)</span></div>
     <div class="stat"><b id="stTess">—</b><span>tu tesitura</span></div>
   </div>
 
   <div class="panel" id="panel">
+    <div class="row">
+      <div><label for="selFocus">Qué notas practicar</label><small>«Notas débiles» insiste en las que fallas o desafinas más.</small></div>
+      <select id="selFocus">
+        <option value="debiles" selected>Notas débiles</option>
+        <option value="azar">Al azar</option>
+      </select>
+    </div>
+    <div class="row" style="display:block">
+      <label>Tu historial por nota</label>
+      <div id="noteStats" class="ns">Todavía no hay datos. Canta unas notas y aparecen aquí.</div>
+      <button class="mini" id="clearStats" style="margin-top:10px">Borrar historial</button>
+    </div>
     <div class="row">
       <div><label for="selPlay">Modo</label><small>Lectura: una nota a la vez. Arcade: escuchas una secuencia y la cantas de memoria.</small></div>
       <select id="selPlay">
@@ -281,10 +300,10 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
-    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, seq:[], seqI:0, seqClef:"treble", playI:-1,
+    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
-    devSum:0, devN:0, lastTs:0, lastGoodTs:0, locked:false
+    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false
   };
 
   const $ = id => document.getElementById(id);
@@ -537,6 +556,7 @@
     $("tessInfo").textContent = (S.tessLabel ? S.tessLabel+": " : "")
       + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado;
     buildPool();
+    guardar();
   }
 
   function newTarget(){
@@ -547,7 +567,7 @@
       return;
     }
     let p, tries = 0;
-    do{ p = S.pool[Math.floor(Math.random()*S.pool.length)]; tries++; }
+    do{ p = elegirPonderado(S.pool); tries++; }
     while(S.target && p.dia===S.target.dia && p.alter===S.target.alter && tries<12);
 
     S.clef = p.clef;
@@ -1000,7 +1020,7 @@
     S.seqClef = cl; S.seq = [];
     for(let i=0;i<S.arcadeLen;i++){
       let p, tries=0;
-      do{ p = opciones[Math.floor(Math.random()*opciones.length)]; tries++; }
+      do{ p = elegirPonderado(opciones); tries++; }
       while(S.seq.length && p.dia===S.seq[S.seq.length-1].dia && p.alter===S.seq[S.seq.length-1].alter && tries<12);
       const nota = dia2note(p.dia, p.alter);
       S.seq.push({dia:p.dia, alter:p.alter, k:p.k, sound:nota.midi + 12*p.k, name:nameOf(nota)+nota.oct});
@@ -1052,6 +1072,7 @@
 
     if(tuned){
       S.progress += dt; S.lastGoodTs = ts; S.wrongMs = Math.max(0, S.wrongMs - dt);
+      regDev(cents);
     }else{
       if(ts - S.lastGoodTs > 160) S.progress = Math.max(0, S.progress - dt*1.6);
       if(m!==null && Math.abs(cents) > 90) S.wrongMs += dt; else S.wrongMs = Math.max(0, S.wrongMs - dt);
@@ -1065,8 +1086,9 @@
     if(S.progress >= S.holdMs){
       if(navigator.vibrate) navigator.vibrate(25);
       ding();
+      cerrarNota(cents, obj.sound);
       S.seqI++; S.progress = 0; S.wrongMs = 0; hist.length = 0;
-      S.done++; $("stDone").textContent = S.done;
+      S.done++;
       if(S.seqI >= S.seq.length) arcadeWin();
       return;
     }
@@ -1091,7 +1113,8 @@
     clearTimers();
     S.mode = "arcadeDone";
     S.lives--;
-    S.wrongMs = 0; S.progress = 0; hist.length = 0;
+    S.wrongMs = 0; S.progress = 0; hist.length = 0; S.nSum = 0; S.nN = 0;
+    if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
     $("badge").textContent = CLEF[S.seqClef].label + livesText();
     $("hold").style.width = "0%";
     if(navigator.vibrate) navigator.vibrate(180);
@@ -1176,6 +1199,7 @@
     if(tuned){
       S.progress += dt;
       S.lastGoodTs = ts;
+      regDev(cents);
       if(!S.locked && S.progress >= S.holdMs){ S.locked = true; succeed(cents); }
     }else{
       const grace = (ts - S.lastGoodTs) < 160 && S.progress>0;
@@ -1221,13 +1245,122 @@
     sub.textContent = "oyes " + midiLabel(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
   }
 
+  /* ---------------- historial por nota ---------------- */
+  const LS_KEY = "entonar:v1";
+
+  function guardar(){
+    try{
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        stats: S.stats,
+        tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
+        play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
+        clefMode: S.clefMode, extra: S.extra, acc: S.acc,
+        tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
+        showName: S.showName, autoTone: S.autoTone
+      }));
+    }catch(e){ /* modo incógnito o sin espacio: seguimos sin guardar */ }
+  }
+
+  function cargar(){
+    let d = null;
+    try{ d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); }catch(e){ return; }
+    if(!d) return;
+    S.stats = d.stats || {};
+    ["trim","play","timbre","focus","clefMode","acc","tessLabel"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    ["arcadeLen","extra","tol","holdMs","scanStep"].forEach(k=>{ if(typeof d[k]==="number") S[k]=d[k]; });
+    ["showName","autoTone"].forEach(k=>{ if(typeof d[k]==="boolean") S[k]=d[k]; });
+    const set = (id,v)=>{ const el=$(id); if(el) el.value = String(v); };
+    set("selFocus",S.focus); set("selPlay",S.play); set("selLen",S.arcadeLen);
+    set("selTimbre",S.timbre); set("selClef",S.clefMode); set("selRange",S.extra);
+    set("selAcc",S.acc); set("selTol",S.tol); set("selHold",S.holdMs);
+    set("selStep",S.scanStep); set("selTrim",S.trim);
+    [["swName","showName"],["swAuto","autoTone"]].forEach(pair=>{
+      const el=$(pair[0]); if(!el) return;
+      el.classList.toggle("on", S[pair[1]]);
+      el.setAttribute("aria-checked", S[pair[1]] ? "true" : "false");
+    });
+    if(d.tessFull && typeof d.tessFull.lo === "number"){
+      setTess(d.tessFull.lo, d.tessFull.hi, S.tessLabel || "Guardada");
+      const lo=$("selLo"), hi=$("selHi");
+      if(lo) lo.value = String(d.tessFull.lo);
+      if(hi) hi.value = String(d.tessFull.hi);
+    }
+    pintarStats();
+  }
+
+  function statOf(m){ return S.stats[String(Math.round(m))]; }
+
+  function regNota(m, media, fallo){
+    const k = String(Math.round(m));
+    const st = S.stats[k] || (S.stats[k] = {n:0, sum:0, fallos:0});
+    if(fallo){ st.fallos++; }
+    else { st.n++; st.sum += media; }
+    pintarStats();
+    guardar();
+  }
+
+  // Peso para la selección: más alto = sale más seguido.
+  function pesoDe(m){
+    const st = statOf(m);
+    if(!st || st.n === 0) return 3;           // nunca practicada: prioridad
+    const media = st.sum/st.n;
+    const p = 1 + media/18 + st.fallos*0.9 - Math.min(1.2, st.n*0.06);
+    return Math.max(0.35, Math.min(7, p));
+  }
+
+  function elegirPonderado(lista){
+    if(S.focus !== "debiles") return lista[Math.floor(Math.random()*lista.length)];
+    let total = 0;
+    const pesos = lista.map(p=>{ const w = pesoDe(dia2note(p.dia,p.alter).midi + 12*p.k); total += w; return w; });
+    let r = Math.random()*total;
+    for(let i=0;i<lista.length;i++){ r -= pesos[i]; if(r<=0) return lista[i]; }
+    return lista[lista.length-1];
+  }
+
+  function pintarStats(){
+    const box = $("noteStats");
+    if(!box) return;
+    const keys = Object.keys(S.stats);
+    if(!keys.length){ box.textContent = "Todavía no hay datos. Canta unas notas y aparecen aquí."; return; }
+    const filas = keys.map(k=>{
+      const st = S.stats[k], m = Number(k);
+      const media = st.n ? st.sum/st.n : null;
+      return {m:m, media:media, n:st.n, fallos:st.fallos, peso:pesoDe(m)};
+    }).sort((a,b)=> b.peso - a.peso).slice(0, 14);
+    let h = "<table>";
+    for(const f of filas){
+      const v = f.media===null ? 40 : f.media;
+      const col = v < 10 ? "#2F8F72" : v < 22 ? "#C9A227" : "#B4542F";
+      const ancho = Math.max(4, Math.min(100, v*3));
+      h += '<tr><td class="n">'+midiLabel(f.m)+'</td>'
+         + '<td><div class="bar"><i style="width:'+ancho+'%;background:'+col+'"></i></div></td>'
+         + '<td class="c">'+(f.media===null ? "—" : f.media.toFixed(0)+" ¢")+'</td>'
+         + '<td class="c" style="width:52px">'+f.n+(f.fallos?" ·"+f.fallos+"✗":"")+'</td></tr>';
+    }
+    h += "</table>";
+    box.innerHTML = h;
+  }
+
+  function regDev(cents){
+    if(cents===null || cents===undefined) return;
+    S.nSum += Math.abs(cents); S.nN++;
+  }
+
+  function cerrarNota(cents, midi){
+    const media = S.nN ? S.nSum/S.nN : Math.abs(cents||0);
+    S.nSum = 0; S.nN = 0;
+    S.devSum += media; S.devN++;
+    $("stAvg").textContent = (S.devSum/S.devN).toFixed(0)+" ¢";
+    if(midi!==undefined && midi!==null) regNota(midi, media, false);
+    return media;
+  }
+
   function succeed(cents){
     S.done++; S.streak++;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
-    S.devSum += Math.abs(cents||0); S.devN++;
+    cerrarNota(cents, S.sound);
     $("stDone").textContent = S.done;
     $("stStreak").textContent = S.streak;
-    $("stAvg").textContent = (S.devSum/S.devN).toFixed(0)+" ¢";
     if(navigator.vibrate) navigator.vibrate(30);
     ding();
     setTimeout(()=>{ if(S.running && S.mode==="practice") newTarget(); }, 420);
@@ -1303,7 +1436,8 @@
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
-    S.streak=0; $("stStreak").textContent=0; newTarget();
+    if(S.sound!==null && S.progress < 200) regNota(S.sound, 0, true);
+    S.streak=0; $("stStreak").textContent=0; S.nSum=0; S.nN=0; newTarget();
   });
   $("gearBtn").addEventListener("click", ()=> $("panel").classList.toggle("open"));
   $("remeasure").addEventListener("click", ()=>{
@@ -1375,6 +1509,7 @@
     $(id).addEventListener("change", e=>{
       S[key] = cast ? cast(e.target.value) : e.target.value;
       if(rebuild){ buildPool(); if(S.running && S.mode==="practice") newTarget(); }
+      guardar();
     });
   }
   bindSel("selClef","clefMode",null,true);
@@ -1383,10 +1518,12 @@
   $("selTrim").addEventListener("change", e=>{
     S.trim = e.target.value;
     applyTrim();
+    guardar();
     if(S.running && S.mode==="practice") newTarget();
   });
   $("selPlay").addEventListener("change", e=>{
     S.play = e.target.value;
+    guardar();
     if(!S.running && S.tess){
       $("msgSub").textContent = "Tu rango: " + midiLabel(S.tess.lo) + " a " + midiLabel(S.tess.hi)
         + "  ·  modo " + (S.play==="arcade" ? "arcade" : "lectura");
@@ -1396,11 +1533,18 @@
   });
   $("selLen").addEventListener("change", e=>{
     S.arcadeLen = Number(e.target.value);
+    guardar();
     if(S.running && S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); }
   });
   $("selTimbre").addEventListener("change", e=>{
     S.timbre = e.target.value;
+    guardar();
     if(S.running && ctx && S.mode==="practice" && S.sound!==null) sound(S.sound, 900);
+  });
+  $("selFocus").addEventListener("change", e=>{ S.focus = e.target.value; guardar(); });
+  $("clearStats").addEventListener("click", ()=>{
+    S.stats = {}; pintarStats(); guardar();
+    S.devSum = 0; S.devN = 0; $("stAvg").textContent = "—";
   });
   bindSel("selStep","scanStep",Number);
   bindSel("selTol","tol",Number);
@@ -1413,6 +1557,7 @@
       el.classList.toggle("on", S[key]);
       el.setAttribute("aria-checked", S[key]?"true":"false");
       if(after) after();
+      guardar();
     };
     el.addEventListener("click", toggle);
     el.addEventListener("keydown", e=>{ if(e.key===" "||e.key==="Enter"){ e.preventDefault(); toggle(); } });
@@ -1425,6 +1570,7 @@
 
   drawStaff(dia2note(34,0), "treble", {progress:0, voiceCents:null});
   $("badge").textContent = "Listo";
+  cargar();
 })();
 </script>
 </body>
