@@ -629,6 +629,7 @@
     drawStaff(null, S.clef, {});
     $("arrow").className = "arrow"; $("arrow").textContent = "·";
     $("skipBtn").textContent = "Ya no puedo";
+    $("toneBtn").textContent = "Saltar medición";
     $("msgMain").textContent = "Canta una nota cómoda y sosténla";
     $("msgSub").textContent = "Cualquiera que te salga fácil. De ahí partimos.";
   }
@@ -710,6 +711,7 @@
     S.probe = m; S.probeT0 = ts; S.progress = 0; S.lastGoodTs = 0;
     hist.length = 0;
     $("arrow").className = "arrow"; $("arrow").textContent = S.scanDir<0 ? "↓" : "↑";
+    $("toneBtn").textContent = "Repetir tono";
     showProbe(m, 0, null, false);
     $("msgMain").textContent = "¿Alcanzas " + midiLabel(m) + "?";
     $("msgSub").textContent = "Suena la referencia. Iguálala y sostenla.";
@@ -986,6 +988,16 @@
     }
   }
 
+  function saltarMedicion(){
+    clearTimers();
+    if(!S.tessFull){
+      const t = TESS[S.tessMode] || TESS.baritone;
+      $("selTess").value = TESS[S.tessMode] ? S.tessMode : "baritone";
+      setTess(t.lo, t.hi, t.name);
+    }
+    startPlaying();
+  }
+
   function startPlaying(){
     clearTimers();
     if(S.play === "arcade"){
@@ -998,6 +1010,7 @@
       $("stDone").textContent = S.done;
       $("skipBtn").textContent = "Saltar";
       $("toneBtn").textContent = "Escuchar nota";
+      $("arrow").className = "arrow"; $("arrow").textContent = "·";
       S.mode = "practice";
       newTarget();
     }
@@ -1157,6 +1170,7 @@
   });
 
   $("toneBtn").addEventListener("click", ()=>{
+    if(S.mode==="anchor" || S.mode==="measurePause"){ saltarMedicion(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
     if(S.mode==="arcadeSing" || S.mode==="arcadePlay"){ playSequence(); return; }
     playTone();
