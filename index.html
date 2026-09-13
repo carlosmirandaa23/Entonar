@@ -154,7 +154,11 @@
         <option value="auto" selected>Automática</option>
         <option value="treble">Sol</option>
         <option value="bass">Fa</option>
-        <option value="both">Alternar</option>
+        <option value="both">Alternar sol y fa</option>
+        <option value="do3">Do en 3.ª (viola)</option>
+        <option value="do4">Do en 4.ª (tenor)</option>
+        <option value="do5">Do en 5.ª (barítono)</option>
+        <option value="grand">Sistema doble (piano)</option>
       </select>
     </div>
     <div class="row">
@@ -227,7 +231,12 @@
 
   const CLEF = {
     treble:{bottom:30, top:38, label:"Clave de sol", glyph:"\u{1D11E}", fb:"G"},
-    bass:  {bottom:18, top:26, label:"Clave de fa",  glyph:"\u{1D122}", fb:"F"}
+    bass:  {bottom:18, top:26, label:"Clave de fa",  glyph:"\u{1D122}", fb:"F"},
+    // Claves de do: el do central cae sobre la línea indicada.
+    do3:   {bottom:24, top:32, label:"Clave de do en 3.ª", cLine:3},
+    do4:   {bottom:22, top:30, label:"Clave de do en 4.ª", cLine:4},
+    do5:   {bottom:20, top:28, label:"Clave de do en 5.ª", cLine:5},
+    grand: {bottom:18, top:38, label:"Sistema doble", grand:true}
   };
 
   const TESS = {
@@ -267,15 +276,86 @@
   }
   const yOfDia = (dia, clef) => Y_BOTTOM - (dia - CLEF[clef].bottom)*STEP;
 
+  // En el sistema doble los dos pentagramas comparten una sola rejilla:
+  // y = 268 - 6*dia. El do central cae en la línea que se omite en medio.
+  const G_TOP = [40,52,64,76,88], G_BOT = [112,124,136,148,160], G_MID = 100;
+  const yGrand = dia => 268 - 6*dia;
+
+  function drawGrand(note, opts){
+    if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}");
+    let s = "";
+    for(const y of G_TOP.concat(G_BOT))
+      s += '<line x1="30" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
+    s += '<path d="M28 40 C16 56, 28 64, 20 100 C28 136, 16 144, 28 160" fill="none" stroke="#2B3550" stroke-width="2.4" stroke-linecap="round"/>';
+    s += '<line x1="30" y1="40" x2="30" y2="160" stroke="#2B3550" stroke-width="1.4"/>';
+    if(glyphOK){
+      s += '<text x="44" y="86" font-size="86" fill="#2B3550" font-family="serif">'+CLEF.treble.glyph+'</text>';
+      s += '<text x="44" y="125" font-size="54" fill="#2B3550" font-family="serif">'+CLEF.bass.glyph+'</text>';
+    }else{
+      s += '<text x="42" y="70" font-size="40" fill="#2B3550" font-family="Georgia,serif" font-style="italic">G</text>';
+      s += '<text x="42" y="142" font-size="34" fill="#2B3550" font-family="Georgia,serif" font-style="italic">F</text>';
+    }
+
+    if(note){
+      const y = yGrand(note.dia);
+      if(y < 40) for(let yy=28; yy>=y-1; yy-=12)
+        s += '<line x1="'+(X_NOTE-17)+'" y1="'+yy+'" x2="'+(X_NOTE+17)+'" y2="'+yy+'" stroke="#2B3550" stroke-width="1.4"/>';
+      else if(y === G_MID)
+        s += '<line x1="'+(X_NOTE-17)+'" y1="'+G_MID+'" x2="'+(X_NOTE+17)+'" y2="'+G_MID+'" stroke="#2B3550" stroke-width="1.4"/>';
+      else if(y > 160) for(let yy=172; yy<=y+1; yy+=12)
+        s += '<line x1="'+(X_NOTE-17)+'" y1="'+yy+'" x2="'+(X_NOTE+17)+'" y2="'+yy+'" stroke="#2B3550" stroke-width="1.4"/>';
+
+      if(note.alter!==0)
+        s += '<text x="'+(X_NOTE-34)+'" y="'+(y+7)+'" font-size="26" fill="#2B3550" font-family="serif">'+(note.alter===1?"\u266F":"\u266D")+'</text>';
+
+      const mid = note.dia >= 28 ? 34 : 22;
+      if(note.dia < mid)
+        s += '<line x1="'+(X_NOTE+7.4)+'" y1="'+(y-1)+'" x2="'+(X_NOTE+7.4)+'" y2="'+(y-36)+'" stroke="#2B3550" stroke-width="1.8"/>';
+      else
+        s += '<line x1="'+(X_NOTE-7.4)+'" y1="'+(y+1)+'" x2="'+(X_NOTE-7.4)+'" y2="'+(y+36)+'" stroke="#2B3550" stroke-width="1.8"/>';
+      s += '<ellipse cx="'+X_NOTE+'" cy="'+y+'" rx="8" ry="6" fill="#1A2135" transform="rotate(-20 '+X_NOTE+' '+y+')"/>';
+
+      if(opts.oct8){
+        const oy = opts.oct8.indexOf("b")>0 ? y+30 : y-24;
+        s += '<text x="'+(X_NOTE+16)+'" y="'+oy+'" font-size="13" fill="#6A6553" font-family="Georgia,serif" font-style="italic">'+opts.oct8+'</text>';
+      }
+
+      const R = 17, CIRC = 2*Math.PI*R, p = Math.max(0, Math.min(1, opts.progress||0));
+      s += '<circle cx="'+X_NOTE+'" cy="'+y+'" r="'+R+'" fill="none" stroke="rgba(26,33,53,.14)" stroke-width="3"/>';
+      if(p>0)
+        s += '<circle cx="'+X_NOTE+'" cy="'+y+'" r="'+R+'" fill="none" stroke="#2F8F72" stroke-width="3" stroke-linecap="round" stroke-dasharray="'+(p*CIRC).toFixed(1)+' '+CIRC.toFixed(1)+'" transform="rotate(-90 '+X_NOTE+' '+y+')"/>';
+
+      if(opts.voiceCents!==null && opts.voiceCents!==undefined){
+        const vy = Math.max(10, Math.min(205, y - (opts.voiceCents/100)*3.5));
+        const col = opts.tuned ? "#2F8F72" : "#B4542F";
+        s += '<line x1="20" y1="'+vy.toFixed(1)+'" x2="'+(X_NOTE+46)+'" y2="'+vy.toFixed(1)+'" stroke="'+col+'" stroke-width="2" opacity=".75"/>';
+        s += '<circle cx="'+(X_NOTE+52)+'" cy="'+vy.toFixed(1)+'" r="4.5" fill="'+col+'"/>';
+      }
+    }
+    staffEl.setAttribute("viewBox", "0 0 340 215");
+    staffEl.innerHTML = s;
+  }
+
   function drawStaff(note, clef, opts){
     opts = opts || {};
+    if(clef === "grand"){ drawGrand(note, opts); return; }
+    staffEl.setAttribute("viewBox", "0 0 340 200");
     if(glyphOK===null) glyphOK = supportsGlyph("\u{1D11E}");
     let s = "";
     for(let k=0;k<5;k++){
       const y = Y_BOTTOM - k*GAP;
       s += '<line x1="14" y1="'+y+'" x2="326" y2="'+y+'" stroke="#2B3550" stroke-width="1.4"/>';
     }
-    if(glyphOK){
+    if(CLEF[clef].cLine){
+      const cy = Y_BOTTOM - (CLEF[clef].cLine-1)*GAP;
+      const top = Y_BOTTOM - 4*GAP;
+      s += '<rect x="24" y="'+(top-3)+'" width="4.5" height="'+(Y_BOTTOM-top+6)+'" fill="#2B3550"/>';
+      s += '<rect x="31" y="'+(top-3)+'" width="2" height="'+(Y_BOTTOM-top+6)+'" fill="#2B3550"/>';
+      s += '<path d="M36 '+(cy-23)+' C55 '+(cy-23)+', 53 '+(cy-6)+', 37 '+(cy-2)+'" fill="none" stroke="#2B3550" stroke-width="3.4" stroke-linecap="round"/>';
+      s += '<path d="M36 '+(cy+23)+' C55 '+(cy+23)+', 53 '+(cy+6)+', 37 '+(cy+2)+'" fill="none" stroke="#2B3550" stroke-width="3.4" stroke-linecap="round"/>';
+      s += '<circle cx="41" cy="'+(cy-9)+'" r="2.1" fill="#2B3550"/>';
+      s += '<circle cx="41" cy="'+(cy+9)+'" r="2.1" fill="#2B3550"/>';
+    }else if(glyphOK){
       const size = clef==="treble"?86:54, cy = clef==="treble"?128:95;
       s += '<text x="30" y="'+cy+'" font-size="'+size+'" fill="#2B3550" font-family="serif">'+CLEF[clef].glyph+'</text>';
     }else{
@@ -322,7 +402,7 @@
 
   /* ---------------- tesitura y notas ---------------- */
   function autoClef(){
-    if(S.clefMode==="treble" || S.clefMode==="bass") return S.clefMode;
+    if(S.clefMode!=="auto" && S.clefMode!=="both") return S.clefMode;
     if(!S.tess) return "treble";
     return (S.tess.lo + S.tess.hi)/2 < 60 ? "bass" : "treble";
   }
@@ -354,7 +434,7 @@
   function buildPool(){
     S.pool = [];
     if(!S.tess) return;
-    if(S.clefMode==="treble" || S.clefMode==="bass"){ S.pool = clefNotes(S.clefMode); return; }
+    if(S.clefMode!=="auto" && S.clefMode!=="both"){ S.pool = clefNotes(S.clefMode); return; }
 
     const t = clefNotes("treble"), b = clefNotes("bass");
     if(S.clefMode==="both"){ S.pool = t.concat(b); return; }
