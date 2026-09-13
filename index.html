@@ -110,6 +110,30 @@
 
   <div class="panel" id="panel">
     <div class="row">
+      <div><label for="selLabel">Etiquetas</label><small>Cómo se nombra la nota: su nombre real, su grado en la tonalidad, o do móvil.</small></div>
+      <select id="selLabel">
+        <option value="fijo" selected>Nombre fijo</option>
+        <option value="grado">Grado (1–7)</option>
+        <option value="movil">Do móvil</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selKey">Tonalidad</label><small>Define la tónica para los grados y el bordón.</small></div>
+      <select id="selKey"></select>
+    </div>
+    <div class="row">
+      <div><label for="selDrone">Bordón</label><small>Tono de la tónica que te da contexto. Continuo necesita audífonos.</small></div>
+      <select id="selDrone">
+        <option value="off">Sin bordón</option>
+        <option value="pulso" selected>Al empezar cada nota</option>
+        <option value="continuo">Continuo</option>
+      </select>
+    </div>
+    <div class="row">
+      <div><label for="selAnchor">Nota ancla</label><small>La que memorizas en el modo ancla.</small></div>
+      <select id="selAnchor"></select>
+    </div>
+    <div class="row">
       <div><label for="selFocus">Qué notas practicar</label><small>«Notas débiles» insiste en las que fallas o desafinas más.</small></div>
       <select id="selFocus">
         <option value="debiles" selected>Notas débiles</option>
@@ -126,6 +150,7 @@
       <select id="selPlay">
         <option value="read" selected>Lectura</option>
         <option value="arcade">Arcade</option>
+        <option value="ancla">Ancla (memoria de altura)</option>
       </select>
     </div>
     <div class="row">
@@ -300,7 +325,7 @@
     tess:null, tessFull:null, tessLabel:"", trim:"comfort", tessMode:"detect", measLo:null, measHi:null,
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
-    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, seq:[], seqI:0, seqClef:"treble", playI:-1,
+    play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -578,8 +603,11 @@
 
     const o8 = OCT8[String(p.k)] || "";
     $("badge").textContent = CLEF[S.clef].label + (o8 ? " · " + o8 : "");
-    $("noteName").innerHTML = S.showName ? nameOf(S.target)+"<small> "+S.target.oct+"</small>" : "";
+    $("noteName").innerHTML = S.showName
+      ? (S.label==="fijo" ? nameOf(S.target)+"<small> "+S.target.oct+"</small>" : etiqueta(S.sound))
+      : "";
     drawStaff(S.target, S.clef, {progress:0, voiceCents:null, oct8:o8});
+    if(S.running) bordonPulso();
     if(S.autoTone && S.running) playTone();
   }
 
@@ -914,6 +942,44 @@
     return b;
   }
 
+  let noiseB=null, jitB=null, gWave=null;
+
+  function bufRuido(){
+    if(noiseB) return noiseB;
+    const n = Math.floor(ctx.sampleRate*2);
+    noiseB = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = noiseB.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = Math.random()*2-1;
+    return noiseB;
+  }
+
+  // Ruido muy lento (unos 6 Hz): sirve de jitter de altura y de shimmer de
+  // volumen. Es la irregularidad que distingue un cuerpo de un oscilador.
+  function bufLento(){
+    if(jitB) return jitB;
+    const n = Math.floor(ctx.sampleRate*4);
+    jitB = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = jitB.getChannelData(0);
+    const a = Math.exp(-2*Math.PI*6/ctx.sampleRate);
+    let y = 0, max = 1e-9;
+    for(let i=0;i<n;i++){
+      y = a*y + (1-a)*(Math.random()*2-1);
+      d[i] = y;
+      if(Math.abs(y) > max) max = Math.abs(y);
+    }
+    for(let i=0;i<n;i++) d[i] /= max;   // normalizar: filtrar deja la señal diminuta
+    return jitB;
+  }
+
+  // Pulso glotal: cae unos 12 dB por octava, no 6 como la sierra.
+  function glotalWave(){
+    if(gWave) return gWave;
+    const N = 24, real = new Float32Array(N), imag = new Float32Array(N);
+    for(let n=1;n<N;n++) imag[n] = 1/Math.pow(n, 1.7);
+    gWave = ctx.createPeriodicWave(real, imag, {disableNormalization:false});
+    return gWave;
+  }
+
   function initSynth(){
     master = ctx.createGain(); master.gain.value = 0.85;
     master.connect(ctx.destination);
@@ -950,29 +1016,66 @@
     g.connect(master);
 
     if(S.timbre === "voz"){
+      const fin = t + dur + 0.45;
       const o = ctx.createOscillator();
-      o.type = "sawtooth"; o.frequency.value = f;
-      // vibrato que entra poco a poco, como en una voz sostenida
+      try{ o.setPeriodicWave(glotalWave()); }catch(e){ o.type = "sawtooth"; }
+      // ataque desde abajo: ninguna voz entra clavada
+      o.frequency.setValueAtTime(f*Math.pow(2,-30/1200), t);
+      o.frequency.exponentialRampToValueAtTime(f, t+0.075);
+
+      // jitter: micro-desafinación continua, en cents
+      const js = ctx.createBufferSource(), jg = ctx.createGain();
+      js.buffer = bufLento(); js.loop = true;
+      jg.gain.value = 6;                   // ±6 cents
+      js.connect(jg); jg.connect(o.detune);
+      js.start(t); js.stop(fin);
+
+      // vibrato que entra progresivamente
       const lfo = ctx.createOscillator(), lg = ctx.createGain();
-      lfo.frequency.value = 5.2;
+      lfo.frequency.value = 5.1;
       lg.gain.setValueAtTime(0, t);
-      lg.gain.linearRampToValueAtTime(f*0.007, t+0.45);
-      lfo.connect(lg); lg.connect(o.frequency);
-      lfo.start(t); lfo.stop(t+dur+0.4);
-      // formantes de la vocal «a»: lo que hace que suene a garganta y no a sierra
-      [[700,1.0,9],[1220,0.55,11],[2600,0.22,13]].forEach(fm=>{
+      lg.gain.linearRampToValueAtTime(14, t+0.5);   // cents
+      lfo.connect(lg); lg.connect(o.detune);
+      lfo.start(t); lfo.stop(fin);
+
+      // shimmer: el volumen tampoco es constante
+      const amp = ctx.createGain(); amp.gain.value = 1;
+      const ss = ctx.createBufferSource(), sg = ctx.createGain();
+      ss.buffer = bufLento(); ss.loop = true; ss.loopStart = 1.7;
+      sg.gain.value = 0.05;                // ±5 % de volumen
+      ss.connect(sg); sg.connect(amp.gain);
+      ss.start(t); ss.stop(fin);
+
+      // formantes de la «a», moviéndose un poco al entrar
+      const F = [[640,700,1.0,9],[1100,1220,0.55,11],[2500,2600,0.22,13]];
+      F.forEach(fm=>{
         const bp = ctx.createBiquadFilter();
-        bp.type = "bandpass"; bp.frequency.value = fm[0]; bp.Q.value = fm[2];
-        const ga = ctx.createGain(); ga.gain.value = fm[1];
-        o.connect(bp); bp.connect(ga); ga.connect(g);
+        bp.type = "bandpass"; bp.Q.value = fm[3];
+        bp.frequency.setValueAtTime(fm[0], t);
+        bp.frequency.linearRampToValueAtTime(fm[1], t+0.11);
+        const ga = ctx.createGain(); ga.gain.value = fm[2];
+        o.connect(bp); bp.connect(ga); ga.connect(amp);
       });
-      // algo de fuente directa para que el fundamental no se pierda
+      // algo de fuente directa para no perder el fundamental
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass"; lp.frequency.value = f*2.4;
-      const dg = ctx.createGain(); dg.gain.value = 0.55;
-      o.connect(lp); lp.connect(dg); dg.connect(g);
-      o.start(t); o.stop(t+dur+0.4);
-      env(g, t, dur, 0.09, 0.22, 0.28);
+      const dg = ctx.createGain(); dg.gain.value = 0.5;
+      o.connect(lp); lp.connect(dg); dg.connect(amp);
+
+      // aire: toda voz trae soplo
+      const nb = ctx.createBufferSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain();
+      nb.buffer = bufRuido(); nb.loop = true;
+      nf.type = "bandpass"; nf.frequency.value = 2300; nf.Q.value = 0.7;
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.05, t+0.06);
+      ng.gain.exponentialRampToValueAtTime(0.014, t+0.45);
+      ng.gain.exponentialRampToValueAtTime(0.0001, fin);
+      nb.connect(nf); nf.connect(ng); ng.connect(amp);
+      nb.start(t); nb.stop(fin);
+
+      amp.connect(g);
+      o.start(t); o.stop(fin);
+      env(g, t, dur, 0.085, 0.24, 0.28);
 
     }else if(S.timbre === "piano"){
       const o = ctx.createOscillator();
@@ -1038,6 +1141,7 @@
     $("arrow").className = "arrow"; $("arrow").textContent = "\u266A";
     $("hold").style.width = "0%";
     drawSequence({playIndex:-1});
+    if(S.running) bordonPulso();
     $("msgMain").textContent = "Escucha la secuencia";
     $("msgSub").textContent = S.seq.length + " notas · después las cantas en orden";
     const DUR = 620, HUECO = 140;
@@ -1046,7 +1150,7 @@
         S.playI = i;
         drawSequence({playIndex:i});
         seqTone(n.sound, DUR);
-        $("msgSub").textContent = (i+1) + " de " + S.seq.length + (S.showName ? "  ·  " + midiLabel(n.sound) : "");
+        $("msgSub").textContent = (i+1) + " de " + S.seq.length + (S.showName ? "  ·  " + etiqueta(n.sound) : "");
       }, 400 + i*(DUR+HUECO)));
     });
     S.timers.push(setTimeout(()=>{
@@ -1145,6 +1249,15 @@
 
   function startPlaying(){
     clearTimers();
+    pararBordon();
+    if(S.drone === "continuo" && S.play !== "ancla") bordonContinuo();
+    if(S.play === "ancla"){
+      $("stDoneLbl").textContent = "intentos";
+      $("stDone").textContent = S.anclaLog.length;
+      if(S.tess){ S.anchor = Math.max(S.tess.lo, Math.min(S.tess.hi, S.anchor)); }
+      anclaNueva();
+      return;
+    }
     if(S.play === "arcade"){
       S.lives = 3;
       $("stDoneLbl").textContent = "rondas ganadas";
@@ -1182,6 +1295,8 @@
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
     if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
     if(S.mode === "arcadeSing"){ arcadeStep(d.f, ts, dt); return; }
+    if(S.mode === "anclaShow"){ hist.length = 0; return; }
+    if(S.mode === "anclaSing"){ anclaStep(d.f, ts); return; }
     if(S.mode === "anchor"){ measureStep(d.f, ts); return; }
     if(S.mode !== "practice"){ return; }
     if(!S.target) return;
@@ -1222,14 +1337,14 @@
     if(f<=0 || cents===null){
       arr.className="arrow"; arr.textContent="·";
       main.textContent = "Canta la nota";
-      sub.textContent = "Se pide " + midiLabel(objetivo) + "  ·  " + midi2freq(objetivo).toFixed(1) + " Hz";
+      sub.textContent = "Se pide " + etiqueta(objetivo) + (S.label==="fijo" ? "  ·  " + midi2freq(objetivo).toFixed(1) + " Hz" : "");
       return;
     }
     const abs = Math.abs(cents), low = cents < 0;
     if(tuned){
       arr.className="arrow"; arr.textContent="●";
       main.textContent = "Ahí está — sostén";
-      sub.textContent = midiLabel(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+      sub.textContent = etiqueta(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
       return;
     }
     arr.className="arrow on"; arr.textContent = low ? "↑" : "↓";
@@ -1237,12 +1352,118 @@
       const octs = Math.round(abs/1200);
       const txt = octs<=1 ? "una octava" : octs+" octavas";
       main.textContent = low ? "Estás "+txt+" abajo" : "Estás "+txt+" arriba";
-      sub.textContent = "oyes " + midiLabel(m) + "  ·  se pide " + midiLabel(objetivo);
+      sub.textContent = "oyes " + etiqueta(m) + "  ·  se pide " + etiqueta(objetivo);
       return;
     }
     const cuanto = abs>250 ? "bastante " : abs>90 ? "" : "un poco ";
     main.textContent = low ? "Vas "+cuanto+"grave — sube" : "Vas "+cuanto+"agudo — baja";
-    sub.textContent = "oyes " + midiLabel(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+    sub.textContent = "oyes " + etiqueta(m) + "  ·  " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+  }
+
+  /* ---------------- etiquetas y tonalidad ---------------- */
+  const GRADOS = ["1","\u266D2","2","\u266D3","3","4","\u266F4","5","\u266D6","6","\u266D7","7"];
+  const MOVIL  = ["do","ra","re","me","mi","fa","fi","sol","le","la","te","si"];
+
+  function etiqueta(m){
+    if(S.label === "fijo") return midiLabel(m);
+    const i = ((Math.round(m) - S.key) % 12 + 12) % 12;
+    return S.label === "grado" ? GRADOS[i] : MOVIL[i];
+  }
+
+  function tonicaGrave(){
+    const ref = (S.tess ? S.tess.lo : 48) - 9;
+    return S.key + 12*Math.round((ref - S.key)/12);
+  }
+
+  function pararBordon(){
+    if(!S.droneNodes) return;
+    S.droneNodes.forEach(n=>{ try{ n.stop(); }catch(e){} });
+    S.droneNodes = null;
+  }
+
+  function bordonContinuo(){
+    pararBordon();
+    if(!ctx || S.drone !== "continuo") return;
+    if(!master) initSynth();
+    const t = ctx.currentTime, base = tonicaGrave(), nodos = [];
+    [[base, 0.05], [base+7, 0.03]].forEach(par=>{
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sawtooth"; o.frequency.value = midi2freq(par[0]);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = midi2freq(par[0])*5;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(par[1], t+0.8);
+      o.connect(lp); lp.connect(g); g.connect(master);
+      o.start(t); nodos.push(o);
+    });
+    S.droneNodes = nodos;
+  }
+
+  function bordonPulso(){
+    if(!ctx || S.drone !== "pulso") return;
+    const base = tonicaGrave();
+    sound(base, 1400);
+    S.timers.push(setTimeout(()=>{ if(S.running) sound(base+7, 1100); }, 120));
+  }
+
+  /* ---------------- modo ancla ---------------- */
+  function anclaNueva(){
+    clearTimers();
+    S.mode = "anclaSing"; mBuf = []; hist.length = 0;
+    S.progress = 0;
+    $("skipBtn").textContent = "Otra";
+    $("toneBtn").textContent = "Rendirse";
+    $("hold").style.width = "0%";
+    $("arrow").className = "arrow"; $("arrow").textContent = "\u00B7";
+    $("noteName").innerHTML = "";
+    showProbe(S.anchor, 0, null, false);
+    $("badge").textContent = "Ancla · " + midiLabel(S.anchor);
+    $("msgMain").textContent = "Canta " + midiLabel(S.anchor) + " de memoria";
+    $("msgSub").textContent = "Sin referencia. Tómate tu tiempo y sostenla.";
+  }
+
+  function anclaStep(f, ts){
+    if(f<=0){
+      mBuf = []; hist.length = 0;
+      $("hold").style.width = "0%";
+      return;
+    }
+    hist.push(f); if(hist.length>4) hist.shift();
+    const m = freq2midi(median3());
+    mBuf.push({t:ts, m:m});
+    while(mBuf.length && ts - mBuf[0].t > 2000) mBuf.shift();
+    const ms = mBuf.map(o=>o.m);
+    if(Math.max.apply(null,ms) - Math.min.apply(null,ms) > 1.2) mBuf = [{t:ts, m:m}];
+    const dur = mBuf.length>1 ? ts - mBuf[0].t : 0;
+    const p = Math.min(1, dur/900);
+    $("hold").style.width = (p*100).toFixed(0)+"%";
+    $("msgMain").textContent = "Sostén tu nota";
+    $("msgSub").textContent = "Sin pistas: te digo el resultado al soltar.";
+    if(p >= 1) anclaResultado(mBuf[mBuf.length-1].m);
+  }
+
+  function anclaResultado(m){
+    clearTimers();
+    S.mode = "anclaShow";
+    const cents = (m - S.anchor)*100;
+    const abs = Math.abs(cents);
+    S.anclaLog.push(Math.round(cents));
+    if(S.anclaLog.length > 60) S.anclaLog.shift();
+    const medias = S.anclaLog.map(Math.abs);
+    const media = medias.reduce((a,b)=>a+b,0)/medias.length;
+    $("stDone").textContent = S.anclaLog.length;
+    $("stAvg").textContent = media.toFixed(0)+" ¢";
+    S.streak = abs <= 50 ? S.streak+1 : 0;
+    $("stStreak").textContent = S.streak;
+    showProbe(S.anchor, 1, cents, abs <= 50);
+    $("badge").textContent = "Ancla · " + midiLabel(S.anchor);
+    const veredicto = abs <= 25 ? "Clavada" : abs <= 50 ? "Muy cerca" : abs <= 100 ? "Por ahí" : "Lejos";
+    $("msgMain").textContent = veredicto + ": " + (cents>=0?"+":"") + cents.toFixed(0) + " ¢";
+    $("msgSub").textContent = "cantaste " + midiLabel(m) + " · escucha la verdadera";
+    if(navigator.vibrate) navigator.vibrate(abs<=50 ? 40 : 120);
+    S.timers.push(setTimeout(()=>{ if(S.running) sound(S.anchor, 1600); }, 450));
+    guardar();
+    S.timers.push(setTimeout(()=>{ if(S.running) anclaNueva(); }, 3600));
   }
 
   /* ---------------- historial por nota ---------------- */
@@ -1254,6 +1475,7 @@
         stats: S.stats,
         tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
         play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
+        key: S.key, label: S.label, drone: S.drone, anchor: S.anchor, anclaLog: S.anclaLog,
         clefMode: S.clefMode, extra: S.extra, acc: S.acc,
         tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
         showName: S.showName, autoTone: S.autoTone
@@ -1266,7 +1488,10 @@
     try{ d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); }catch(e){ return; }
     if(!d) return;
     S.stats = d.stats || {};
-    ["trim","play","timbre","focus","clefMode","acc","tessLabel"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    ["trim","play","timbre","focus","clefMode","acc","tessLabel","label","drone"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    if(typeof d.key === "number") S.key = d.key;
+    if(typeof d.anchor === "number") S.anchor = d.anchor;
+    if(Array.isArray(d.anclaLog)) S.anclaLog = d.anclaLog;
     ["arcadeLen","extra","tol","holdMs","scanStep"].forEach(k=>{ if(typeof d[k]==="number") S[k]=d[k]; });
     ["showName","autoTone"].forEach(k=>{ if(typeof d[k]==="boolean") S[k]=d[k]; });
     const set = (id,v)=>{ const el=$(id); if(el) el.value = String(v); };
@@ -1274,6 +1499,7 @@
     set("selTimbre",S.timbre); set("selClef",S.clefMode); set("selRange",S.extra);
     set("selAcc",S.acc); set("selTol",S.tol); set("selHold",S.holdMs);
     set("selStep",S.scanStep); set("selTrim",S.trim);
+    set("selLabel",S.label); set("selKey",S.key); set("selDrone",S.drone); set("selAnchor",S.anchor);
     [["swName","showName"],["swAuto","autoTone"]].forEach(pair=>{
       const el=$(pair[0]); if(!el) return;
       el.classList.toggle("on", S[pair[1]]);
@@ -1387,7 +1613,7 @@
   $("startBtn").addEventListener("click", async ()=>{
     if(S.running){
       S.running = false;
-      clearTimers();
+      clearTimers(); pararBordon();
       cancelAnimationFrame(raf); raf=0;
       if(stream) stream.getTracks().forEach(t=>t.stop());
       if(ctx) ctx.close();
@@ -1427,6 +1653,8 @@
   });
 
   $("toneBtn").addEventListener("click", ()=>{
+    if(S.mode==="anclaSing"){ anclaResultado(S.anchor + 99); return; }
+    if(S.mode==="anclaShow"){ sound(S.anchor, 1400); return; }
     if(S.mode==="anchor" || S.mode==="measurePause"){ saltarMedicion(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
     if(S.mode==="arcadeSing" || S.mode==="arcadePlay"){ playSequence(); return; }
@@ -1434,6 +1662,7 @@
   });
   $("skipBtn").addEventListener("click", ()=>{
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
+    if(S.play==="ancla" && S.tess){ anclaNueva(); return; }
     if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
     if(S.sound!==null && S.progress < 200) regNota(S.sound, 0, true);
@@ -1541,6 +1770,37 @@
     guardar();
     if(S.running && ctx && S.mode==="practice" && S.sound!==null) sound(S.sound, 900);
   });
+  (function llenarSelects(){
+    const key = $("selKey"), anc = $("selAnchor");
+    let a = "";
+    for(let i=0;i<12;i++) a += '<option value="'+i+'">'+CHROM[i]+' mayor</option>';
+    key.innerHTML = a; key.value = String(S.key);
+    let b = "";
+    for(let m=36;m<=84;m++) b += '<option value="'+m+'">'+CHROM[((m%12)+12)%12]+(Math.floor(m/12)-1)+'</option>';
+    anc.innerHTML = b; anc.value = String(S.anchor);
+  })();
+  $("selKey").addEventListener("change", e=>{
+    S.key = Number(e.target.value);
+    if(S.drone==="continuo" && S.running) bordonContinuo();
+    if(S.running && S.mode==="practice") newTarget();
+    guardar();
+  });
+  $("selAnchor").addEventListener("change", e=>{
+    S.anchor = Number(e.target.value);
+    if(S.running && S.play==="ancla") anclaNueva();
+    guardar();
+  });
+  $("selLabel").addEventListener("change", e=>{
+    S.label = e.target.value;
+    if(S.running && S.mode==="practice") newTarget();
+    guardar();
+  });
+  $("selDrone").addEventListener("change", e=>{
+    S.drone = e.target.value;
+    pararBordon();
+    if(S.drone==="continuo" && S.running && S.play!=="ancla") bordonContinuo();
+    guardar();
+  });
   $("selFocus").addEventListener("change", e=>{ S.focus = e.target.value; guardar(); });
   $("clearStats").addEventListener("click", ()=>{
     S.stats = {}; pintarStats(); guardar();
@@ -1564,7 +1824,8 @@
   }
   bindSw("swName","showName", ()=>{
     $("noteName").innerHTML = (S.showName && S.target && S.mode==="practice")
-      ? nameOf(S.target)+"<small> "+S.target.oct+"</small>" : "";
+      ? (S.label==="fijo" ? nameOf(S.target)+"<small> "+S.target.oct+"</small>" : etiqueta(S.sound))
+      : "";
   });
   bindSw("swAuto","autoTone");
 
