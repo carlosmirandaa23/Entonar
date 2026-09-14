@@ -211,6 +211,7 @@
         <option value="escaleraIV">Escalera ↑↓ (ida y vuelta)</option>
         <option value="terceras">Terceras ↑ (1-3-2-4, 3-5-4-6…)</option>
         <option value="tercerasB">Terceras ↓ (8-6-7-5…)</option>
+        <option value="tercerasIV">Terceras ↑↓ (sube y regresa)</option>
         <option value="esc5" selected>5 notas: sube y baja</option>
         <option value="desc5">5 notas bajando</option>
         <option value="arp">Arpegio 1-3-5-3-1</option>
@@ -401,7 +402,7 @@
     anchor:null, probe:null, probeT0:0, scanDir:-1, scanStep:1, next:null, pauseTitle:"", refining:false,
     pool:[], target:null, sound:null, k:0,
     play:"read", arcadeLen:5, timbre:"voz", muteUntil:0, focus:"debiles", stats:{}, orden:"prioridad", key:0, label:"fijo", drone:"pulso", anchor:57, anclaLog:[], droneNodes:null,
-    echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", seq:[], seqI:0, seqClef:"treble", playI:-1,
+    echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", vuelta:false, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
     devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false
@@ -992,7 +993,7 @@
     opts = opts || {};
     const cl = S.seqClef;
     const n = S.seq.length;
-    const step = n > 9 ? 26 : (n>1 ? Math.min(44, 216/(n-1)) : 0);
+    const step = n > 12 ? 24 : n > 9 ? 26 : (n>1 ? Math.min(44, 216/(n-1)) : 0);
     const x0 = 100;
     const W = Math.max(340, x0 + step*(n-1) + 40);
     drawStaff(null, cl, {width:W});
@@ -1301,9 +1302,10 @@
     $("stDone").textContent = S.round;
     $("stStreak").textContent = S.streak;
     const voc = S.play === "vocaliz";
+    const iv = voc && PATRONES_IV[S.patron] && !S.vuelta;
     $("msgMain").textContent = voc ? "Bien — transponemos" : "¡Ronda completa!";
-    $("msgSub").textContent = voc
-      ? (S.exDir<0 ? "Medio tono abajo" : "Medio tono arriba")
+    $("msgSub").textContent = iv ? "Ahora el mismo camino de regreso"
+      : voc ? (S.exDir<0 ? "Medio tono abajo" : "Medio tono arriba")
       : "Ronda " + (S.round+1) + " en camino…";
     $("hold").style.width = "100%";
     if(navigator.vibrate) navigator.vibrate([40,60,40]);
@@ -1539,6 +1541,10 @@
     terceras:  [0,2,1,3,2,4,3,5,4,6,5,7,6,8,7],   // 1-3-2-4, 3-5-4-6, 5-7-6-8, 7-9-8
     tercerasB: [7,5,6,4,5,3,4,2,3,1,2,0]          // la misma, bajando
   };
+  // Ida y vuelta: dos renglones seguidos, sube y regresa, sin transponer en medio.
+  const PATRONES_IV = {
+    tercerasIV: ["terceras","tercerasB"]
+  };
 
   const PATRONES = {
     // Escalera: +1 tono / -1 semitono. Cada nota se ataca desde una
@@ -1573,8 +1579,10 @@
 
   function vocalizNueva(){
     clearTimers();
-    const diat = PATRONES_G[S.patron];
-    const p = diat ? diat.map(grado2semi) : (PATRONES[S.patron] || PATRONES.esc5);
+    const par = PATRONES_IV[S.patron];
+    const clave = par ? par[S.vuelta ? 1 : 0] : S.patron;
+    const diat = PATRONES_G[clave];
+    const p = diat ? diat.map(grado2semi) : (PATRONES[clave] || PATRONES.esc5);
     const lo = Math.min.apply(null,p), hi = Math.max.apply(null,p);
     const minIni = (S.tess ? S.tess.lo : 48) - lo;
     const maxIni = (S.tess ? S.tess.hi : 72) - hi;
@@ -1621,7 +1629,8 @@
       S.mode = "arcadeDone";
       drawSequence({playIndex:-1});
       $("badge").textContent = CLEF[S.seqClef].label;
-      $("msgMain").textContent = "Acorde de referencia";
+      $("msgMain").textContent = (PATRONES_IV[S.patron] && S.vuelta)
+        ? "Acorde · ahora el regreso" : "Acorde de referencia";
       $("msgSub").textContent = "Sitúate en " + etiqueta(S.exStart) + " y espera el patrón.";
       S.timers.push(setTimeout(()=>{ if(S.running) playSequence(); }, 1900));
       return;
@@ -1632,7 +1641,13 @@
   function vocalizSiguiente(){
     // La escalera ya recorre terreno por sí misma: la transposición continúa
     // el viaje en su mismo sentido en vez de pelearse con él.
-    if(S.patron === "escalera") S.exStart += 5;
+    if(PATRONES_IV[S.patron]){
+      // primero el renglón de vuelta en la misma tonalidad, y ahí sí transponemos
+      if(!S.vuelta){ S.vuelta = true; vocalizNueva(); return; }
+      S.vuelta = false;
+      S.exStart += S.exDir;
+    }
+    else if(S.patron === "escalera") S.exStart += 5;
     else if(S.patron === "escaleraB") S.exStart -= 5;
     else S.exStart += S.exDir;
     vocalizNueva();
@@ -1708,7 +1723,7 @@
         tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
         play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
         key: S.key, label: S.label, drone: S.drone, orden: S.orden, anchor: S.anchor, anclaLog: S.anclaLog,
-        echo: S.echo, patron: S.patron, exDir: S.exDir, acorde: S.acorde,
+        echo: S.echo, patron: S.patron, exDir: S.exDir, acorde: S.acorde, vuelta: S.vuelta,
         clefMode: S.clefMode, extra: S.extra, acc: S.acc,
         tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
         showName: S.showName, autoTone: S.autoTone
@@ -2059,7 +2074,7 @@
   $("selEcho").addEventListener("change", e=>{ S.echo = Number(e.target.value); guardar(); });
   $("selAcorde").addEventListener("change", e=>{ S.acorde = e.target.value; guardar(); });
   $("selPatron").addEventListener("change", e=>{
-    S.patron = e.target.value; S.exStart = 0;
+    S.patron = e.target.value; S.exStart = 0; S.vuelta = false;
     if(S.running && S.play==="vocaliz") vocalizNueva();
     guardar();
   });
