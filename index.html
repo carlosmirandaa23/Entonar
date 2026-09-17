@@ -1539,7 +1539,10 @@
   const grado2semi = g => { const o = Math.floor(g/7); return o*12 + MAYOR[g - o*7]; };
   const PATRONES_G = {
     terceras:  [0,2,1,3,2,4,3,5,4,6,5,7,6,8,7],   // 1-3-2-4, 3-5-4-6, 5-7-6-8, 7-9-8
-    tercerasB: [7,5,6,4,5,3,4,2,3,1,2,0]          // la misma, bajando
+    // Espejo exacto de la anterior (índice i -> 7-i): 15 notas también, y el
+    // último grupo se pasa por debajo de la tónica igual que el de arriba se
+    // pasa por encima de la octava.
+    tercerasB: [7,5,6,4,5,3,4,2,3,1,2,0,1,-1,0]
   };
   // Ida y vuelta: dos renglones seguidos, sube y regresa, sin transponer en medio.
   const PATRONES_IV = {
