@@ -21,3 +21,13 @@ Al abrir la app, la tarjeta **Rutina de hoy** te dice qué toca y te lleva paso 
 - Si dejas la rutina a medias, «Continuar rutina» la retoma donde te quedaste.
 - Si tocas «Siguiente» con al menos el 60 % del tiempo hecho, el ejercicio cuenta como hecho.
 - **Práctica libre** sigue ofreciendo todos los modos de antes (lectura, arcade, ancla, vocalises) con sus ajustes.
+
+## Resumen al terminar
+
+Al terminar la rutina (o si la detienes a la mitad), aparece un **Resumen de hoy** con lo que escuchó el micrófono:
+
+- **Para mejorar:** los 3 puntos más importantes, cada uno con un consejo concreto. Puede detectar si cantas bajo o alto en general, o solo en agudos o en graves; las notas que más te costaron; si la nota se mueve mientras la sostienes; si tardas en encontrar la nota o entras desde abajo; un soplo corto; sirenas que no cubren tu rango; un posible quiebre de registro; y qué tan lejos queda tu nota ancla.
+- **Lo que salió bien.**
+- **Tu tendencia:** compara las métricas de hoy con el promedio de tus últimos 7 días.
+
+El último resumen se puede volver a abrir desde la tarjeta de la rutina. El micrófono no evalúa postura, tensión, timbre ni dicción; para eso conviene grabarse en video de vez en cuando.

@@ -106,6 +106,18 @@
   .rutInfo ol{margin:8px 0;padding-left:20px;font-size:14px;line-height:1.5}
   .rutInfo li{margin:5px 0}
   .rutInfo .meta{color:var(--text)}
+  .resumen{margin-top:16px;border:1px solid var(--gold);border-radius:8px;padding:14px}
+  .resumen h3{font-family:Georgia,serif;font-weight:400;font-size:19px;margin:0 0 4px}
+  .resumen .rsSub{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .resumen h4{font-size:13px;font-weight:600;margin:14px 0 6px;color:var(--gold);letter-spacing:.3px}
+  .resumen ul,.resumen ol{margin:0;padding-left:20px;font-size:14px;line-height:1.45}
+  .resumen li{margin:6px 0}
+  .resumen li small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .resumen table{width:100%;border-collapse:collapse;font-size:13px}
+  .resumen td{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .resumen td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .resumen .up{color:var(--ok)} .resumen .down{color:var(--off)}
+  .resumen .limite{color:var(--muted);font-size:12px;line-height:1.5;margin:14px 0 0}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 </style>
@@ -127,6 +139,7 @@
     </div>
     <ol class="hoyLista" id="hoyLista"></ol>
     <button class="act primary" id="rutBtn">Empezar rutina · 15 min</button>
+    <button class="mini" id="verResumen" hidden style="margin-top:10px;width:100%">Ver el último resumen</button>
   </section>
 
   <section class="rutHead" id="rutHead" hidden>
@@ -166,6 +179,8 @@
     <ol id="rutPasos"></ol>
     <p class="meta" id="rutMeta"></p>
   </details>
+
+  <section class="resumen" id="resumen" hidden aria-live="polite"></section>
 
   <div class="stats">
     <div class="stat"><b id="stDone">0</b><span id="stDoneLbl">notas logradas</span></div>
@@ -462,14 +477,14 @@
     echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", vuelta:false, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
-    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null
+    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null, nBuf:[], atq:null
   };
 
   // Rutina diaria: qué bloque toca, cuánto falta y los ajustes del usuario
   // guardados aparte mientras la rutina impone los suyos.
   const R = {
-    activa:false, pendiente:false, orden:[], i:0, resta:0, enBloque:false, backup:null,
-    datos:{dias:[], hoy:null, soplo:{}, sirena:{}}
+    activa:false, pendiente:false, orden:[], i:0, resta:0, enBloque:false, backup:null, ses:null,
+    datos:{dias:[], hoy:null, soplo:{}, sirena:{}, hist:{}, resumen:null}
   };
 
   const $ = id => document.getElementById(id);
@@ -742,7 +757,7 @@
     S.target = dia2note(p.dia, p.alter);
     S.k = p.k;
     S.sound = S.target.midi + 12*p.k;
-    S.progress = 0; S.locked = false; hist.length = 0;
+    S.progress = 0; S.locked = false; hist.length = 0; S.atq = null;
 
     const o8 = OCT8[String(p.k)] || "";
     $("badge").textContent = CLEF[S.clef].label + (o8 ? " · " + o8 : "");
@@ -1313,7 +1328,7 @@
       }, 400 + i*(DUR+HUECO)));
     });
     S.timers.push(setTimeout(()=>{
-      S.mode = "arcadeSing"; S.seqI = 0; S.progress = 0; S.wrongMs = 0;
+      S.mode = "arcadeSing"; S.seqI = 0; S.progress = 0; S.wrongMs = 0; S.atq = null;
       S.lastGoodTs = 0; hist.length = 0;
       drawSequence({});
       $("msgMain").textContent = "Ahora cántalas en orden";
@@ -1333,6 +1348,7 @@
       tuned = Math.abs(cents) <= S.tol;
     }else{ hist.length = 0; }
 
+    ataqueStep(ts, m, cents, tuned);
     if(tuned){
       S.progress += dt; S.lastGoodTs = ts; S.wrongMs = Math.max(0, S.wrongMs - dt);
       regDev(cents);
@@ -1350,7 +1366,7 @@
       if(navigator.vibrate) navigator.vibrate(25);
       ding();
       cerrarNota(cents, obj.sound);
-      S.seqI++; S.progress = 0; S.wrongMs = 0; hist.length = 0;
+      S.seqI++; S.progress = 0; S.wrongMs = 0; hist.length = 0; S.atq = null;
       S.done++;
       if(S.seqI >= S.seq.length) arcadeWin();
       return;
@@ -1383,7 +1399,7 @@
     clearTimers();
     S.mode = "arcadeDone";
     if(S.play !== "vocaliz") S.lives--;
-    S.wrongMs = 0; S.progress = 0; hist.length = 0; S.nSum = 0; S.nN = 0;
+    S.wrongMs = 0; S.progress = 0; hist.length = 0; resetNota(); S.atq = null;
     if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
     $("badge").textContent = CLEF[S.seqClef].label + livesText();
     $("hold").style.width = "0%";
@@ -1495,6 +1511,7 @@
       hist.length = 0;
     }
 
+    ataqueStep(ts, mNow, cents, tuned);
     if(tuned){
       S.progress += dt;
       S.lastGoodTs = ts;
@@ -1766,6 +1783,7 @@
     const cents = (m - S.anchor)*100;
     const abs = Math.abs(cents);
     S.anclaLog.push(Math.round(cents));
+    if(R.ses && R.enBloque) R.ses.ancla.push(abs);
     if(S.anclaLog.length > 60) S.anclaLog.shift();
     const medias = S.anclaLog.map(Math.abs);
     const media = medias.reduce((a,b)=>a+b,0)/medias.length;
@@ -1842,7 +1860,7 @@
   function regNota(m, media, fallo){
     const k = String(Math.round(m));
     const st = S.stats[k] || (S.stats[k] = {n:0, sum:0, fallos:0});
-    if(fallo){ st.fallos++; }
+    if(fallo){ st.fallos++; if(R.ses && R.enBloque) R.ses.fallos++; }
     else { st.n++; st.sum += media; }
     pintarStats();
     guardar();
@@ -1903,11 +1921,14 @@
   function regDev(cents){
     if(cents===null || cents===undefined) return;
     S.nSum += Math.abs(cents); S.nN++;
+    if(S.nBuf.length < 400) S.nBuf.push(cents);
   }
+  function resetNota(){ S.nSum = 0; S.nN = 0; S.nBuf = []; }
 
   function cerrarNota(cents, midi){
     const media = S.nN ? S.nSum/S.nN : Math.abs(cents||0);
-    S.nSum = 0; S.nN = 0;
+    if(R.ses && R.enBloque && midi!==undefined && midi!==null) sesNota(midi, S.nBuf);
+    resetNota();
     S.devSum += media; S.devN++;
     $("stAvg").textContent = (S.devSum/S.devN).toFixed(0)+" ¢";
     if(midi!==undefined && midi!==null) regNota(midi, media, false);
@@ -2063,6 +2084,8 @@
       R.datos.hoy = d.hoy || null;
       R.datos.soplo = d.soplo || {};
       R.datos.sirena = d.sirena || {};
+      R.datos.hist = d.hist || {};
+      R.datos.resumen = d.resumen || null;
     }catch(e){}
   }
   function hechosHoy(){ const h = R.datos.hoy; return h && h.fecha === fechaStr() ? h.hechos : []; }
@@ -2123,6 +2146,9 @@
       h += '<span class="' + (dias.has(f) ? "on" : "") + (k===0 ? " hoyD" : "") + '" title="' + f + '">' + INI[d.getDay()] + '</span>';
     }
     $("hoyDias").innerHTML = h;
+    const rs = R.datos.resumen;
+    $("verResumen").hidden = !rs;
+    if(rs) $("verResumen").textContent = rs.fecha === fechaStr() ? "Ver el resumen de hoy" : "Ver el último resumen";
     const parcial = hechos.length && hechos.length < bl.length;
     $("rutBtn").textContent = parcial ? "Continuar rutina"
       : completa ? "Repetir rutina" : "Empezar rutina · 15 min";
@@ -2137,7 +2163,7 @@
     R.i = R.orden.findIndex(b=>hechos.indexOf(b.id) < 0);
     if(R.i < 0) R.i = 0;
     R.backup = {}; CFG_KEYS.forEach(k=>{ R.backup[k] = S[k]; });
-    R.activa = true; R.enBloque = false;
+    R.activa = true; R.enBloque = false; R.ses = sesNueva();
     $("rutHead").hidden = false; $("rutInfo").hidden = false;
     if(!S.tess){ R.pendiente = true; pintarBloque(R.orden[R.i]); beginMeasure(); return; }
     rutinaMostrar();
@@ -2234,8 +2260,16 @@
   function guiaCerrar(){
     const g = S.guia, f = fechaStr();
     if(!g) return;
+    if(g.tipo === "soplo" && g.fase === "suelta" && g.ini){
+      // se acabó el tiempo a mitad de un soplo: ese también cuenta
+      const dur = (g.ult - g.ini)/1000;
+      if(dur >= 1.5){ g.best = Math.max(g.best, dur); if(R.ses) R.ses.soplos.push(dur); }
+    }
     if(g.tipo === "soplo" && g.best) R.datos.soplo[f] = Math.max(R.datos.soplo[f] || 0, g.best);
-    if(g.tipo === "sirena" && g.lo !== null) R.datos.sirena[f] = Math.max(R.datos.sirena[f] || 0, g.hi - g.lo);
+    if(g.tipo === "sirena" && g.lo !== null){
+      R.datos.sirena[f] = Math.max(R.datos.sirena[f] || 0, g.hi - g.lo);
+      if(R.ses) R.ses.sirena = Math.max(R.ses.sirena || 0, g.hi - g.lo);
+    }
     S.guia = null;
     rutGuardar();
   }
@@ -2279,6 +2313,7 @@
 
   function rutinaSalir(){
     guiaCerrar();
+    if(R.ses){ mostrarResumen(generarResumen()); R.ses = null; }
     if(R.backup) Object.assign(S, R.backup);
     R.backup = null; R.activa = false; R.enBloque = false; R.pendiente = false;
     S.mode = "practice";
@@ -2291,13 +2326,211 @@
     pintarHoy();
   }
 
+  /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, ancla:[], soplos:[], sirena:null, quiebres:[]}; }
+  const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
+  function mediana(a){
+    if(!a.length) return null;
+    const b = a.slice().sort((x,y)=>x-y), k = b.length >> 1;
+    return b.length % 2 ? b[k] : (b[k-1] + b[k])/2;
+  }
+  const firmado = c => (c >= 0 ? "+" : "−") + Math.abs(Math.round(c)) + " ¢";
+
+  // Cada nota lograda deja su rastro: desviación con signo, desviación absoluta
+  // y cuánto se movió mientras la sostenías.
+  function sesNota(midi, buf){
+    if(buf.length < 3) return;
+    const s = promedio(buf);
+    const sd = Math.sqrt(Math.max(0, promedio(buf.map(x=>x*x)) - s*s));
+    R.ses.notas.push({m:Math.round(midi), s:s, abs:promedio(buf.map(Math.abs)), sd:sd, n:buf.length, b:R.orden[R.i].id});
+  }
+
+  // Desde que empiezas a sonar hasta que entras en la tolerancia; y desde qué
+  // lado llegaste.
+  function ataqueStep(ts, m, cents, tuned){
+    if(!R.ses || !R.enBloque || m === null) return;
+    const a = S.atq || (S.atq = {t0:0, listo:false});
+    if(a.listo) return;
+    if(!a.t0){ a.t0 = ts; a.desde = cents; a.fuera = Math.abs(cents) > S.tol && Math.abs(cents) < 300; }
+    if(tuned){ a.listo = true; R.ses.ataques.push({ms:ts - a.t0, desde:a.desde, fuera:a.fuera}); }
+  }
+
+  function metricas(){
+    const X = R.ses, N = X.notas, M = {nNotas:N.length, fallos:X.fallos};
+    if(N.length){
+      M.afin = promedio(N.map(x=>x.abs));
+      M.sesgo = promedio(N.map(x=>x.s));
+      const largas = N.filter(x=>x.b === "largas" && x.n >= 10);
+      const base = largas.length >= 3 ? largas : N.filter(x=>x.n >= 8);
+      if(base.length >= 3) M.estab = mediana(base.map(x=>x.sd));
+      const mid = S.tess ? (S.tess.lo + S.tess.hi)/2 : 60;
+      const alto = N.filter(x=>x.m > mid), bajo = N.filter(x=>x.m <= mid);
+      if(alto.length >= 3) M.sesgoAlto = promedio(alto.map(x=>x.s));
+      if(bajo.length >= 3) M.sesgoBajo = promedio(bajo.map(x=>x.s));
+      const por = {};
+      N.forEach(x=>{ (por[x.m] = por[x.m] || []).push(x.abs); });
+      M.peores = Object.keys(por).filter(k=>por[k].length >= 2)
+        .map(k=>({m:Number(k), abs:promedio(por[k])}))
+        .filter(x=>x.abs > 22).sort((a,b)=>b.abs - a.abs).slice(0, 2);
+    }
+    const A = X.ataques.filter(a=>a.ms < 6000);
+    if(A.length >= 4) M.ataque = mediana(A.map(a=>a.ms));
+    const F = A.filter(a=>a.fuera);
+    if(F.length >= 4){ M.desdeAbajo = F.filter(a=>a.desde < 0).length / F.length; M.nFuera = F.length; M.nAtaques = A.length; }
+    if(X.soplos.length) M.soplo = Math.max.apply(null, X.soplos);
+    if(X.sirena >= 3) M.sirena = X.sirena;   // menos que eso: casi no hubo sirena
+    if(X.quiebres.length >= 3) M.quiebre = mediana(X.quiebres);
+    if(X.ancla.length) M.ancla = promedio(X.ancla);
+    return M;
+  }
+
+  // Promedio de los días anteriores (hasta 7) para comparar.
+  function previo(){
+    const h = fechaStr(), dias = Object.keys(R.datos.hist).filter(k=>k !== h).sort().slice(-7);
+    const P = {};
+    ["afin","estab","ataque","soplo","sirena"].forEach(k=>{
+      const v = dias.map(d=>R.datos.hist[d][k]).filter(x=>typeof x === "number");
+      if(v.length) P[k] = promedio(v);
+    });
+    return P;
+  }
+
+  function generarResumen(){
+    const M = metricas(), P = previo();
+    const bien = [], mal = [];
+    const add = (lista, score, txt, tip)=> lista.push({score:score, txt:txt, tip:tip||""});
+    const datosAfin = M.nNotas >= 5;
+    let registro = 0;
+
+    if(datosAfin){
+      if(M.afin <= 15) add(bien, 2, "Afinación precisa: " + Math.round(M.afin) + " ¢ de desviación media.");
+      else if(M.afin > 25) add(mal, M.afin/20, "Afinación general algo suelta: " + Math.round(M.afin) + " ¢ de desviación media.",
+        "Escucha la referencia completa antes de cantar y entra suave; es mejor tardar un poco y llegar justo.");
+      if(M.sesgoAlto !== undefined && M.sesgoAlto <= -12 && (M.sesgoBajo === undefined || M.sesgoAlto - M.sesgoBajo <= -8)){
+        registro = -1;
+        add(mal, -M.sesgoAlto/8, "En la parte aguda de tu rango te quedas bajo (" + firmado(M.sesgoAlto) + ").",
+          "Es lo más común: al subir falta aire, no fuerza. Abre la boca hacia abajo, mantén las costillas abiertas y piensa la nota «más arriba» de lo que crees.");
+      }else if(M.sesgoAlto !== undefined && M.sesgoAlto >= 12){
+        registro = 1;
+        add(mal, M.sesgoAlto/8, "En los agudos te vas alto (" + firmado(M.sesgoAlto) + ").",
+          "Suele ser exceso de presión: baja el volumen y deja que la nota se adelgace en lugar de empujarla.");
+      }
+      if(M.sesgoBajo !== undefined && Math.abs(M.sesgoBajo) >= 12 && Math.sign(M.sesgoBajo) !== registro){
+        add(mal, Math.abs(M.sesgoBajo)/8, "En los graves te vas " + (M.sesgoBajo < 0 ? "bajo" : "alto") + " (" + firmado(M.sesgoBajo) + ").",
+          M.sesgoBajo < 0 ? "En graves no hundas la laringe ni la barbilla: piensa la nota con brillo, como hablando."
+                          : "En graves relaja: no hace falta apretar para que suenen.");
+        registro = registro || Math.sign(M.sesgoBajo);
+      }
+      if(!registro && Math.abs(M.sesgo) >= 8){
+        add(mal, Math.abs(M.sesgo)/8, (M.sesgo < 0 ? "Tiendes a quedarte un poco bajo" : "Tiendes a irte un poco alto") + " (" + firmado(M.sesgo) + " en promedio).",
+          M.sesgo < 0 ? "Quedarse bajo suele ser falta de apoyo al final de la nota: sostén el aire hasta que termine."
+                      : "Irse alto suele venir de empujar: suelta volumen y tensión del cuello.");
+      }
+      if(M.peores && M.peores.length){
+        add(mal, M.peores[0].abs/25, "Las notas que más te costaron: " + M.peores.map(x=>midiLabel(x.m) + " (" + Math.round(x.abs) + " ¢)").join(", ") + ".",
+          "La práctica libre con «Notas débiles» (Ajustes → Práctica) las repite más seguido.");
+      }
+    }
+    if(M.estab !== undefined){
+      if(M.estab <= 7) add(bien, 1.5, "Notas largas muy estables (±" + Math.round(M.estab) + " ¢).");
+      else if(M.estab > 11) add(mal, M.estab/11, "Tus notas sostenidas se mueven (±" + Math.round(M.estab) + " ¢ mientras las aguantas).",
+        "El aire debe salir parejo, como en el soplo «vvvv». Imagina la nota como una línea recta y no subas el volumen a la mitad.");
+    }
+    if(M.ataque !== undefined){
+      if(M.ataque <= 350) add(bien, 1, "Encuentras la nota rápido (" + (M.ataque/1000).toFixed(1) + " s).");
+      else if(M.ataque > 700) add(mal, M.ataque/700, "Tardas en encontrar la nota (≈" + (M.ataque/1000).toFixed(1) + " s).",
+        "Antes de cantar, imagínala en la cabeza un segundo. Luego entra suave, justo en la altura, en vez de buscarla cantando.");
+    }
+    if(M.desdeAbajo !== undefined && M.desdeAbajo >= 0.7){
+      add(mal, 1 + M.desdeAbajo, "Sueles entrar a las notas desde abajo y resbalar hacia ellas (" + Math.round(M.desdeAbajo*100) + " % de las veces que no entraste directo).",
+        "Ese «scoop» se corrige pensando la nota desde arriba. Prueba atacar con una sílaba corta como «la» o «na».");
+    }
+    if(M.fallos >= 3) add(mal, M.fallos/3, "Se escaparon " + M.fallos + " notas o rondas.",
+      "Ve más lento: «Repetir» o «Escuchar nota» las veces que necesites antes de cantar.");
+    else if(datosAfin && M.fallos === 0) add(bien, 1, "Ninguna nota perdida.");
+    if(M.soplo !== undefined){
+      const rec = mejorDe(R.datos.soplo);
+      if(rec && M.soplo > rec) add(bien, 2, "Nuevo récord de soplo: " + M.soplo.toFixed(1) + " s.");
+      else if(M.soplo < 10) add(mal, (12 - M.soplo)/4, "Tu soplo más largo duró " + M.soplo.toFixed(1) + " s.",
+        "Meta: 15–20 s parejos. Inhala bajo (panza y costillas), no por los hombros, y suelta poquito aire.");
+      else if(M.soplo >= 18) add(bien, 1, "Buen control de aire: " + M.soplo.toFixed(1) + " s de soplo.");
+    }
+    if(M.sirena !== undefined){
+      const rango = S.tessFull ? S.tessFull.hi - S.tessFull.lo : 24;
+      if(M.sirena < rango*0.7) add(mal, 1.2, "Tus sirenas recorrieron " + Math.round(M.sirena) + " de los " + rango + " semitonos de tu rango.",
+        "Deja que la voz se adelgace arriba con poco volumen; la sirena no tiene que sonar bonita, solo continua.");
+      else add(bien, 1, "Sirenas amplias: " + Math.round(M.sirena) + " semitonos.");
+    }
+    if(M.quiebre !== undefined) add(mal, 1.1, "Posible quiebre de voz alrededor de " + midiLabel(M.quiebre) + " (la sirena dio saltos ahí).",
+      "Haz sirenas cortas que crucen esa zona, en «ng» o «u» suave, con menos volumen al pasar. Es normal; se suaviza con práctica.");
+    if(M.ancla !== undefined){
+      if(M.ancla <= 30) add(bien, 1, "Memoria de altura fina: tu nota ancla a " + Math.round(M.ancla) + " ¢.");
+      else if(M.ancla > 60) add(mal, M.ancla/60, "Tu nota ancla quedó lejos (" + (M.ancla >= 100 ? "≈ " + Math.round(M.ancla/100) + " semitonos" : Math.round(M.ancla) + " ¢") + " en promedio).",
+        "Tararéala varias veces al día (por ejemplo, al despertar) y compárala con la app.");
+    }
+
+    // Guarda el día para comparar mañana.
+    const f = fechaStr(), H = R.datos.hist[f] || {};
+    ["afin","estab","ataque","soplo","sirena"].forEach(k=>{
+      if(M[k] === undefined || (k === "afin" && !datosAfin)) return;
+      H[k] = (k === "soplo" || k === "sirena") ? Math.max(H[k] || 0, M[k]) : M[k];
+    });
+    R.datos.hist[f] = H;
+    const llaves = Object.keys(R.datos.hist).sort();
+    while(llaves.length > 120) delete R.datos.hist[llaves.shift()];
+
+    const filas = [
+      ["afin", "Desviación media", v=>Math.round(v) + " ¢", false],
+      ["estab", "Movimiento al sostener", v=>"±" + Math.round(v) + " ¢", false],
+      ["ataque", "Tiempo para encontrar la nota", v=>(v/1000).toFixed(1) + " s", false],
+      ["soplo", "Soplo más largo", v=>v.toFixed(1) + " s", true],
+      ["sirena", "Alcance de la sirena", v=>Math.round(v) + " semitonos", true]
+    ].filter(r=>M[r[0]] !== undefined && !(r[0] === "afin" && !datosAfin));
+
+    mal.sort((a,b)=>b.score - a.score); bien.sort((a,b)=>b.score - a.score);
+    return {M:M, P:P, bien:bien.slice(0, 3), mal:mal.slice(0, 3), filas:filas};
+  }
+
+  function mostrarResumen(r){
+    const hay = r.M.nNotas || r.M.soplo !== undefined || r.M.sirena !== undefined || r.M.ancla !== undefined;
+    if(!hay) return;
+    let h = "<h3>Resumen de hoy</h3><p class=\"rsSub\">Lo que el micrófono escuchó en esta sesión.</p>";
+    if(r.mal.length){
+      h += "<h4>PARA MEJORAR</h4><ol>" + r.mal.map(x=>"<li>" + x.txt + "<small>" + x.tip + "</small></li>").join("") + "</ol>";
+    }else{
+      h += "<h4>PARA MEJORAR</h4><p class=\"rsSub\">Nada importante que corregir hoy. Sigue así: la exigencia sube sola cada semana.</p>";
+    }
+    if(r.bien.length) h += "<h4>LO QUE SALIÓ BIEN</h4><ul>" + r.bien.map(x=>"<li>" + x.txt + "</li>").join("") + "</ul>";
+    if(r.filas.length){
+      h += "<h4>TU TENDENCIA</h4><table>";
+      r.filas.forEach(f=>{
+        const k = f[0], v = r.M[k], antes = r.P[k];
+        let cmp = "";
+        if(antes !== undefined && antes > 0){
+          const mejor = f[3] ? v > antes*1.08 : v < antes*0.92;
+          const peor  = f[3] ? v < antes*0.92 : v > antes*1.08;
+          cmp = " <span class=\"" + (mejor ? "up" : peor ? "down" : "") + "\">" + (mejor ? "▲" : peor ? "▼" : "=") + "</span>"
+              + "<br><small style=\"color:var(--muted)\">antes " + f[2](antes) + "</small>";
+        }
+        h += "<tr><td>" + f[1] + "</td><td class=\"v\">" + f[2](v) + cmp + "</td></tr>";
+      });
+      h += "</table>";
+    }
+    h += "<p class=\"limite\">El micrófono mide altura, estabilidad, tiempos y aire. No ve tu postura ni la tensión del cuello o la mandíbula, y no juzga timbre ni dicción. Grábate en video una vez por semana cantando lo mismo y compárate.</p>";
+    R.datos.resumen = {fecha:fechaStr(), html:h};
+    rutGuardar();
+    const box = $("resumen");
+    box.innerHTML = h; box.hidden = false;
+    setTimeout(()=> box.scrollIntoView({behavior:"smooth", block:"start"}), 300);
+  }
+
   /* ---- bloques guiados: sin pentagrama, con el micrófono como testigo ---- */
   function guiaStep(d, ts, dt){
     const g = S.guia;
     if(!g) return;
     const suena = d.f > 0 || (d.rms || 0) > UMBRAL_SONIDO;
     if(g.tipo === "soplo") soploStep(g, suena, ts);
-    else if(g.tipo === "sirena") sirenaStep(g, d);
+    else if(g.tipo === "sirena") sirenaStep(g, d, ts);
     else calmaStep(g, d, suena, dt);
   }
 
@@ -2343,21 +2576,30 @@
     }
     if(dur < 1.5){ g.ini = 0; return; }   // fue un ruido, no un soplo
     g.best = Math.max(g.best, dur);
+    if(R.ses) R.ses.soplos.push(dur);
     $("msgMain").textContent = dur.toFixed(1) + " s" + (rec && dur > rec ? " — ¡récord!" : "");
     $("msgSub").textContent = "Descansa y prepárate para inhalar otra vez.";
     $("arrow").textContent = "·";
     g.fase = "descansa"; g.t0 = ts;
   }
 
-  function sirenaStep(g, d){
+  function sirenaStep(g, d, ts){
     const m = notaVoz(d);
     const cubre = ()=> "Recorres " + midiLabel(g.lo) + " a " + midiLabel(g.hi) + " · " + Math.round(g.hi - g.lo) + " semitonos";
     if(m === null){
+      g.prevM = undefined;
       $("arrow").className = "arrow"; $("arrow").textContent = "·";
       $("msgMain").textContent = g.lo === null ? "Desliza de grave a agudo" : "Otra, un poquito más amplia";
       $("msgSub").textContent = g.lo === null ? "En «ng» o «uuu», sin cortar el sonido." : cubre();
       return;
     }
+    // Un salto brusco de unos semitonos entre dos cuadros seguidos es la firma
+    // del quiebre de registro (los saltos de octava suelen ser error del detector).
+    if(g.prevM !== undefined && ts - g.prevTs < 120){
+      const salto = Math.abs(m - g.prevM);
+      if(salto > 2.5 && salto < 9 && R.ses) R.ses.quiebres.push((m + g.prevM)/2);
+    }
+    g.prevM = m; g.prevTs = ts;
     g.lo = g.lo === null ? m : Math.min(g.lo, m);
     g.hi = g.hi === null ? m : Math.max(g.hi, m);
     const rango = S.tessFull ? S.tessFull.hi - S.tessFull.lo : 24;
@@ -2425,7 +2667,7 @@
     S.running = true; S.lastTs = 0;
     $("startBtn").textContent = "Detener";
     $("toneBtn").disabled = false; $("skipBtn").disabled = false;
-    $("hoy").hidden = true;
+    $("hoy").hidden = true; $("resumen").hidden = true;
     raf = requestAnimationFrame(loop);
     return true;
   }
@@ -2437,6 +2679,14 @@
   });
   $("rutBtn").addEventListener("click", empezarRutina);
   $("rutNext").addEventListener("click", rutinaSiguiente);
+  $("verResumen").addEventListener("click", ()=>{
+    if(!R.datos.resumen) return;
+    const box = $("resumen");
+    if(!box.hidden){ box.hidden = true; return; }
+    box.innerHTML = R.datos.resumen.html;
+    box.hidden = false;
+    box.scrollIntoView({behavior:"smooth", block:"start"});
+  });
 
   $("toneBtn").addEventListener("click", ()=>{
     if(S.mode==="rutinaPausa"){ rutinaIniciarBloque(); return; }
@@ -2455,7 +2705,7 @@
     if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
     if(S.sound!==null && S.progress < 200) regNota(S.sound, 0, true);
-    S.streak=0; $("stStreak").textContent=0; S.nSum=0; S.nN=0; newTarget();
+    S.streak=0; $("stStreak").textContent=0; resetNota(); newTarget();
   });
   $("gearBtn").addEventListener("click", ()=> $("panel").classList.toggle("open"));
   document.querySelectorAll(".tb").forEach(b=>{
