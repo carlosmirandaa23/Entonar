@@ -75,6 +75,37 @@
   .ns .bar{height:6px;border-radius:99px;background:var(--ink-2);overflow:hidden}
   .ns .bar i{display:block;height:100%}
   .note{color:var(--muted);font-size:12px;line-height:1.5;margin-top:18px}
+  [hidden]{display:none!important}
+  .hoy{border:1px solid var(--rule);border-radius:8px;padding:14px;margin:0 0 16px;background:rgba(29,39,64,.55)}
+  .hoyTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .hoyTop b{font-family:Georgia,serif;font-weight:400;font-size:19px;display:block}
+  .hoyTop small{color:var(--muted);font-size:12px}
+  .dias{display:flex;gap:4px;flex:none}
+  .dias span{width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);font-size:10px;color:var(--muted);
+      display:flex;align-items:center;justify-content:center}
+  .dias span.on{background:var(--ok);border-color:var(--ok);color:#fff}
+  .dias span.hoyD{border-color:var(--gold)}
+  .hoyLista{list-style:none;margin:12px 0 14px;padding:0;counter-reset:b}
+  .hoyLista li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:14px;
+      border-bottom:1px solid rgba(255,255,255,.06);counter-increment:b}
+  .hoyLista li span::before{content:counter(b) ". ";color:var(--muted)}
+  .hoyLista li small{color:var(--muted);font-size:12px;white-space:nowrap}
+  .hoyLista li.ok span{color:var(--ok)}
+  .hoyLista li.ok span::before{content:"\2713  ";color:var(--ok)}
+  #rutBtn{width:100%}
+  .rutHead{margin:0 0 12px}
+  .rutTop{display:flex;align-items:center;gap:10px}
+  .rutTop b{flex:1;font-family:Georgia,serif;font-weight:400;font-size:18px}
+  .rutTop .paso{color:var(--muted);font-size:12px;white-space:nowrap}
+  .rutTop .reloj{font-variant-numeric:tabular-nums;color:var(--gold);font-size:18px;font-family:Georgia,serif}
+  .rutBar{height:3px;background:var(--ink-2);border-radius:99px;overflow:hidden;margin-top:8px}
+  .rutBar i{display:block;height:100%;width:0;background:var(--gold);transition:width .3s linear}
+  .rutInfo{margin-top:16px;border:1px solid var(--rule);border-radius:8px;padding:12px 14px}
+  .rutInfo summary{cursor:pointer;color:var(--gold);font-size:14px}
+  .rutInfo p{font-size:13px;color:var(--muted);line-height:1.5;margin:8px 0}
+  .rutInfo ol{margin:8px 0;padding-left:20px;font-size:14px;line-height:1.5}
+  .rutInfo li{margin:5px 0}
+  .rutInfo .meta{color:var(--text)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 </style>
@@ -89,6 +120,25 @@
     <button class="gear" id="gearBtn">Ajustes</button>
   </header>
 
+  <section class="hoy" id="hoy">
+    <div class="hoyTop">
+      <div><b>Rutina de hoy</b><small id="hoySub">15 minutos, paso a paso</small></div>
+      <div class="dias" id="hoyDias" aria-label="Últimos 7 días"></div>
+    </div>
+    <ol class="hoyLista" id="hoyLista"></ol>
+    <button class="act primary" id="rutBtn">Empezar rutina · 15 min</button>
+  </section>
+
+  <section class="rutHead" id="rutHead" hidden>
+    <div class="rutTop">
+      <span class="paso" id="rutPaso">1/7</span>
+      <b id="rutTit"></b>
+      <span class="reloj" id="rutReloj">0:00</span>
+      <button class="mini" id="rutNext">Siguiente ›</button>
+    </div>
+    <div class="rutBar"><i id="rutProg"></i></div>
+  </section>
+
   <div class="sheet">
     <div class="badge" id="badge">Listo</div>
     <div class="noteName" id="noteName"></div>
@@ -98,17 +148,24 @@
   <div class="readout">
     <div class="arrow" id="arrow">·</div>
     <div class="msg" id="msg">
-      <b id="msgMain">Toca «Empezar» y permite el micrófono</b>
-      <span id="msgSub">Primero mediremos tu tesitura.</span>
+      <b id="msgMain">Tu rutina de hoy te espera</b>
+      <span id="msgSub">Toca «Empezar rutina» y permite el micrófono. La primera vez medimos tu tesitura.</span>
     </div>
   </div>
   <div class="holdbar"><i id="hold"></i></div>
 
   <div class="controls">
-    <button class="act primary" id="startBtn">Empezar</button>
+    <button class="act" id="startBtn">Práctica libre</button>
     <button class="act" id="toneBtn" disabled>Escuchar nota</button>
     <button class="act" id="skipBtn" disabled>Saltar</button>
   </div>
+
+  <details class="rutInfo" id="rutInfo" open hidden>
+    <summary>Cómo se hace</summary>
+    <p id="rutPorque"></p>
+    <ol id="rutPasos"></ol>
+    <p class="meta" id="rutMeta"></p>
+  </details>
 
   <div class="stats">
     <div class="stat"><b id="stDone">0</b><span id="stDoneLbl">notas logradas</span></div>
@@ -405,7 +462,14 @@
     echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", vuelta:false, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
-    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false
+    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null
+  };
+
+  // Rutina diaria: qué bloque toca, cuánto falta y los ajustes del usuario
+  // guardados aparte mientras la rutina impone los suyos.
+  const R = {
+    activa:false, pendiente:false, orden:[], i:0, resta:0, enBloque:false, backup:null,
+    datos:{dias:[], hoy:null, soplo:{}, sirena:{}}
   };
 
   const $ = id => document.getElementById(id);
@@ -740,11 +804,11 @@
       dec[i] = v; rms += v*v;
     }
     rms = Math.sqrt(rms/n);
-    if(rms < 0.006) return {f:-1};
+    if(rms < 0.006) return {f:-1, rms:rms};
 
     const minLag = Math.max(2, Math.floor(sr2/1100));
     const maxLag = Math.min(n-3, Math.floor(sr2/70));
-    if(maxLag <= minLag) return {f:-1};
+    if(maxLag <= minLag) return {f:-1, rms:rms};
 
     const vals = new Float32Array(maxLag+2);
     let best = -1, bestVal = 0;
@@ -756,7 +820,7 @@
       vals[lag] = v;
       if(v > bestVal){ bestVal = v; best = lag; }
     }
-    if(best < 0 || bestVal < 0.5) return {f:-1};
+    if(best < 0 || bestVal < 0.5) return {f:-1, rms:rms};
 
     // Regla de McLeod: entre los picos casi tan buenos como el máximo, nos
     // quedamos con el de menor retardo. Eso evita quedarse en un subarmónico
@@ -772,7 +836,7 @@
     const x1=vals[best-1], x2=vals[best], x3=vals[best+1];
     const a=(x1+x3-2*x2)/2, cc=(x3-x1)/2;
     let lag = best; if(a) lag = best - cc/(2*a);
-    return {f: sr2/lag, q: bestVal};
+    return {f: sr2/lag, q: bestVal, rms:rms};
   }
 
   function median3(){
@@ -872,7 +936,7 @@
     const left = 3 - Math.floor((quiet-900)/1000);
     if(left > 0){
       $("msgMain").textContent = "Prepárate… " + left;
-      $("msgSub").textContent = S.next==="practice" ? "Empezamos a leer."
+      $("msgSub").textContent = S.next==="practice" ? (R.pendiente ? "Empezamos la rutina." : "Empezamos a leer.")
         : bajando ? "Vamos BAJANDO nota por nota." : "Ahora vamos SUBIENDO nota por nota.";
       $("hold").style.width = (((quiet-900)/3000)*100).toFixed(0)+"%";
       return;
@@ -1350,6 +1414,7 @@
   }
 
   function startPlaying(){
+    if(R.pendiente){ R.pendiente = false; rutinaMostrar(); return; }
     clearTimers();
     pararBordon();
     if(S.drone === "continuo" && S.play !== "ancla") bordonContinuo();
@@ -1399,6 +1464,9 @@
       hist.length = 0;
     }
 
+    if(R.activa && R.enBloque && rutinaTick(dt)) return;
+    if(S.mode === "rutinaPausa"){ hist.length = 0; return; }
+    if(S.mode === "guia"){ guiaStep(d, ts, dt); return; }
     if(S.mode === "measurePause"){ pauseStep(d.f, ts); return; }
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
     if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
@@ -1720,16 +1788,18 @@
   const LS_KEY = "entonar:v1";
 
   function guardar(){
+    // Durante la rutina se guardan los ajustes propios del usuario, no los del ejercicio.
+    const S0 = R.backup ? Object.assign({}, S, R.backup) : S;
     try{
       localStorage.setItem(LS_KEY, JSON.stringify({
-        stats: S.stats,
-        tessFull: S.tessFull, tessLabel: S.tessLabel, trim: S.trim,
-        play: S.play, arcadeLen: S.arcadeLen, timbre: S.timbre, focus: S.focus,
-        key: S.key, label: S.label, drone: S.drone, orden: S.orden, anchor: S.anchor, anclaLog: S.anclaLog,
-        echo: S.echo, patron: S.patron, exDir: S.exDir, acorde: S.acorde, vuelta: S.vuelta,
-        clefMode: S.clefMode, extra: S.extra, acc: S.acc,
-        tol: S.tol, holdMs: S.holdMs, scanStep: S.scanStep,
-        showName: S.showName, autoTone: S.autoTone
+        stats: S0.stats,
+        tessFull: S0.tessFull, tessLabel: S0.tessLabel, trim: S0.trim,
+        play: S0.play, arcadeLen: S0.arcadeLen, timbre: S0.timbre, focus: S0.focus,
+        key: S0.key, label: S0.label, drone: S0.drone, orden: S0.orden, anchor: S0.anchor, anclaLog: S0.anclaLog,
+        echo: S0.echo, patron: S0.patron, exDir: S0.exDir, acorde: S0.acorde, vuelta: S0.vuelta,
+        clefMode: S0.clefMode, extra: S0.extra, acc: S0.acc,
+        tol: S0.tol, holdMs: S0.holdMs, scanStep: S0.scanStep,
+        showName: S0.showName, autoTone: S0.autoTone
       }));
     }catch(e){ /* modo incógnito o sin espacio: seguimos sin guardar */ }
   }
@@ -1872,28 +1942,472 @@
     sound(S.sound, 1100);
   }
 
-  /* ---------------- controles ---------------- */
-  $("startBtn").addEventListener("click", async ()=>{
-    if(S.running){
-      S.running = false;
-      clearTimers(); pararBordon();
-      cancelAnimationFrame(raf); raf=0;
-      if(stream) stream.getTracks().forEach(t=>t.stop());
-      if(ctx) ctx.close();
-      ctx=null; stream=null;
-      $("startBtn").textContent = "Empezar";
-      $("skipBtn").textContent = "Saltar";
-      $("toneBtn").disabled = true; $("skipBtn").disabled = true;
-      $("msgMain").textContent = "Sesión detenida";
-      $("msgSub").textContent = S.done+" notas logradas · mejor racha "+S.bestStreak;
+  /* ---------------- rutina diaria ---------------- */
+  // Unos 15 minutos con el orden clásico de una sesión de técnica: aire,
+  // calentamiento semiocluido, registro completo, sostenido, agilidad, oído y
+  // enfriamiento. Los bloques de escalas y de oído rotan día con día, y la
+  // exigencia sube cada semana de rutinas completadas.
+  const LS_RUT = "entonar:rutina:v1";
+  const CFG_KEYS = ["play","patron","exDir","tol","holdMs","echo","autoTone","arcadeLen","acorde"];
+  const TOL_NIVEL = [45, 40, 35, 30], HOLD_LARGAS = [2000, 2500, 3000, 4000], ARCADE_NIVEL = [3, 4, 4, 5];
+  const VOCALES = ["«a»", "«o»", "«u»", "«e»", "«i»"];
+  const UMBRAL_SONIDO = 0.012;
+
+  const B_RESPIRA = {
+    id:"respira", titulo:"Respiración y soplo", min:2, tipo:"soplo",
+    porque:"El aire es el motor de la voz. Soltarlo parejo y sin prisa hace que todo lo demás salga más fácil y más afinado.",
+    pasos:[
+      "De pie, pies al ancho de los hombros, rodillas sueltas, hombros abajo y cuello largo.",
+      "Inhala por la nariz mientras la app cuenta 4: que se inflen la panza y las costillas hacia los lados, no el pecho ni los hombros.",
+      "Suelta el aire en un zumbido «vvvv» (dientes de arriba apoyados en el labio de abajo), parejo y suave, lo más largo que puedas sin apretar.",
+      "Cuando se acabe el aire no te exprimas: relaja la panza, descansa y vuelve a inhalar."
+    ]
+  };
+  const B_TRINOS = {
+    id:"trinos", titulo:"Trinos de labios (o popote)", min:3, tipo:"app",
+    porque:"Es un ejercicio de tracto vocal semiocluido: al cerrar parcialmente la boca, la presión que regresa amortigua el choque de las cuerdas. Calienta sin cansar y es de lo más recomendado por fonoaudiólogos.",
+    pasos:[
+      "Labios juntos y sueltos; sopla para que vibren como «brrrr» de motor, y añade voz.",
+      "Si los labios no aguantan, empuja suavemente las mejillas hacia la nariz con dos dedos.",
+      "Si no te sale el trino, canta «uuu» a través de un popote delgado: funciona igual.",
+      "Escucha el acorde y sigue la escala de 5 notas que suena; cada ronda sube medio tono. Volumen bajo, cero esfuerzo."
+    ],
+    cfg:{play:"vocaliz", patron:"esc5", exDir:1, tol:50, holdMs:500, acorde:"si"}
+  };
+  const B_SIRENA = {
+    id:"sirena", titulo:"Sirenas", min:1.5, tipo:"sirena",
+    porque:"Deslizarte por todo tu rango une la voz de pecho con la de cabeza y va borrando el «quiebre» entre las dos.",
+    pasos:[
+      "Usa «ng» (como el final de «tengo», con la boca entreabierta) o una «uuu» suave.",
+      "Desliza de tu nota más grave a la más aguda y de regreso, como sirena de ambulancia, sin cortar el sonido.",
+      "Pasa por la zona del quiebre despacio y con poco volumen; arriba no empujes, deja que se adelgace.",
+      "Haz varias, cada una un poquito más amplia que la anterior."
+    ]
+  };
+  const B_LARGAS = {
+    id:"largas", titulo:"Notas largas estables", min:2, tipo:"app",
+    porque:"Sostener una nota quieta entrena el apoyo y la afinación fina, la base de cantar entonado.",
+    pasos:[
+      "Escucha la nota de referencia y cántala en «aaa» o «ooo», mandíbula suelta.",
+      "Mantén el sonido quieto: mismo volumen, misma altura, garganta relajada.",
+      "Si el indicador dice «sube» o «baja», corrige despacio, no de golpe.",
+      "Respira entre nota y nota. Si una no sale, toca «Saltar»: la app la repetirá más adelante."
+    ]
+  };
+  const B_CALMA = {
+    id:"calma", titulo:"Enfriamiento", min:1, tipo:"calma",
+    porque:"Bajar la voz con suavidad la deja relajada después del trabajo, como estirar al terminar de correr.",
+    pasos:[
+      "Boca cerrada, zumba un «mmm» suave, como quien dice «mmm, qué rico».",
+      "Desliza desde una nota media hacia abajo, despacito, varias veces.",
+      "Busca sentir cosquillas en labios y nariz: ahí debe vibrar.",
+      "Termina con un bostezo-suspiro y toma agua."
+    ]
+  };
+
+  const ESCALAS = [
+    {titulo:"Arpegios 1-3-5-3-1", patron:"arp",
+     porque:"Los saltos del arpegio te obligan a «apuntar» a cada nota en vez de resbalar hacia ella.",
+     tip:"Imagina cada nota antes de cantarla; la de arriba, ligera y sin empujar."},
+    {titulo:"Terceras ida y vuelta", patron:"tercerasIV",
+     porque:"Agilidad: mover la voz rápido y limpio entre notas cercanas, como en los adornos de una canción.",
+     tip:"Notas cortas y unidas (legato), sin «aspirar» entre una y otra."},
+    {titulo:"Escalera tono/semitono", patron:"escaleraIV",
+     porque:"Tono arriba, semitono abajo: cada nota llega desde un lado distinto, así afinas intervalos pequeños con precisión.",
+     tip:"El semitono es más chico de lo que parece: no te pases al bajar."},
+    {titulo:"Arpegio a la octava", patron:"arp8",
+     porque:"Llevar el arpegio hasta la octava estira tu rango poco a poco y conecta grave con agudo.",
+     tip:"Al subir abre un poco más la boca hacia abajo (no hacia los lados) y no levantes la barbilla."},
+    {titulo:"Saltos de octava", patron:"oct",
+     porque:"El salto de octava cruza el cambio de registro: aprendes a llegar arriba sin subir la laringe ni gritar.",
+     tip:"Piensa la nota de arriba «encima» de la de abajo, sin cambiar la forma de la boca."}
+  ];
+
+  const OIDO = [
+    {titulo:"Eco: escucha, guarda y canta", cfg:{play:"read", echo:3000, autoTone:false, holdMs:1000},
+     porque:"Retener la nota unos segundos entrena el oído interno: cantar afinado empieza por imaginar bien la nota.",
+     pasos:[
+       "Suena una nota y luego hay silencio.",
+       "Durante el silencio, cántala «por dentro», sin emitir sonido.",
+       "Cuando diga «Ahora canta», cántala y sostenla hasta que avance.",
+       "Si fallas no pasa nada: la app insiste más en las notas que te cuestan."
+     ]},
+    {titulo:"Memoria de melodías", cfg:{play:"arcade"},
+     porque:"Repetir melodías cortas de oído es justo lo que haces al aprender una canción.",
+     pasos:[
+       "Escucha la secuencia completa sin cantar.",
+       "Repítela en orden, sosteniendo cada nota hasta que avance.",
+       "Tienes 3 vidas por ronda; «Repetir» la vuelve a tocar.",
+       "Canta en «la» o «na» para que cada nota tenga un ataque claro."
+     ]},
+    {titulo:"Nota ancla (memoria de altura)", cfg:{play:"ancla"},
+     porque:"Memorizar una nota de referencia te da un punto fijo para orientarte sin piano.",
+     pasos:[
+       "Canta la nota ancla de memoria, sin escucharla antes.",
+       "Sostenla; al soltar te dice qué tan cerca quedaste.",
+       "Luego suena la verdadera: escúchala bien y guárdala.",
+       "Puedes cambiar la nota ancla en Ajustes → Práctica."
+     ]}
+  ];
+
+  function fechaStr(d){
+    d = d || new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function rutGuardar(){ try{ localStorage.setItem(LS_RUT, JSON.stringify(R.datos)); }catch(e){} }
+  function rutCargar(){
+    try{
+      const d = JSON.parse(localStorage.getItem(LS_RUT) || "null");
+      if(!d) return;
+      R.datos.dias = Array.isArray(d.dias) ? d.dias : [];
+      R.datos.hoy = d.hoy || null;
+      R.datos.soplo = d.soplo || {};
+      R.datos.sirena = d.sirena || {};
+    }catch(e){}
+  }
+  function hechosHoy(){ const h = R.datos.hoy; return h && h.fecha === fechaStr() ? h.hechos : []; }
+  function racha(){
+    const dias = new Set(R.datos.dias), d = new Date();
+    if(!dias.has(fechaStr(d))) d.setDate(d.getDate()-1);   // hoy aún cuenta si practicas
+    let n = 0;
+    while(dias.has(fechaStr(d))){ n++; d.setDate(d.getDate()-1); }
+    return n;
+  }
+  // Rutinas completas antes de hoy: decide la variación y el nivel.
+  function diaN(){ const h = fechaStr(); return R.datos.dias.filter(x=>x!==h).length; }
+  function nivel(){ return Math.min(3, Math.floor(diaN()/7)); }
+  function mejorDe(tabla){
+    const h = fechaStr();
+    return Object.keys(tabla).reduce((m,k)=> k===h ? m : Math.max(m, tabla[k]), 0);
+  }
+  const fmtMin = m => (m % 1 ? Math.floor(m) + "½" : m) + " min";
+  function fmtReloj(ms){
+    const s = Math.max(0, Math.ceil(ms/1000));
+    return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+  }
+
+  function bloquesDeHoy(){
+    const n = diaN(), nv = nivel();
+    const esc = ESCALAS[n % ESCALAS.length], oi = OIDO[n % OIDO.length];
+    const vocal = VOCALES[n % VOCALES.length];
+    const cfgOido = Object.assign({tol:TOL_NIVEL[nv]+5}, oi.cfg, oi.cfg.play==="arcade" ? {arcadeLen:ARCADE_NIVEL[nv]} : {});
+    return [
+      B_RESPIRA, B_TRINOS, B_SIRENA,
+      Object.assign({}, B_LARGAS, {cfg:{play:"read", holdMs:HOLD_LARGAS[nv], tol:TOL_NIVEL[nv], autoTone:true, echo:0}}),
+      {id:"escalas", titulo:esc.titulo, min:3, tipo:"app", porque:esc.porque,
+       pasos:[
+         "Escucha el acorde y el patrón; luego cántalo tú, nota por nota.",
+         "Vocal de hoy: " + vocal + ". Boca relajada, mandíbula suelta, como medio bostezo.",
+         esc.tip,
+         "Cuando llegue muy agudo o muy grave y ya no salga cómodo, toca «Otra ronda»: nunca fuerces."
+       ],
+       cfg:{play:"vocaliz", patron:esc.patron, exDir: n%2 ? -1 : 1, tol:TOL_NIVEL[nv]+5, holdMs:600, acorde:"si"}},
+      {id:"oido", titulo:oi.titulo, min:2.5, tipo:"app", porque:oi.porque, pasos:oi.pasos, cfg:cfgOido},
+      B_CALMA
+    ];
+  }
+
+  function pintarHoy(){
+    const bl = bloquesDeHoy(), hechos = hechosHoy();
+    const completa = R.datos.dias.indexOf(fechaStr()) >= 0, r = racha();
+    $("hoySub").textContent = "Día " + (diaN()+1) + " · nivel " + (nivel()+1)
+      + (r ? " · racha de " + r + (r===1 ? " día" : " días") : " · 15 min, paso a paso");
+    $("hoyLista").innerHTML = bl.map(b=>
+      '<li class="' + (hechos.indexOf(b.id) >= 0 ? "ok" : "") + '"><span>' + b.titulo + '</span><small>' + fmtMin(b.min) + '</small></li>'
+    ).join("");
+    const INI = ["D","L","M","M","J","V","S"], dias = new Set(R.datos.dias);
+    let h = "";
+    for(let k=6; k>=0; k--){
+      const d = new Date(); d.setDate(d.getDate()-k);
+      const f = fechaStr(d);
+      h += '<span class="' + (dias.has(f) ? "on" : "") + (k===0 ? " hoyD" : "") + '" title="' + f + '">' + INI[d.getDay()] + '</span>';
+    }
+    $("hoyDias").innerHTML = h;
+    const parcial = hechos.length && hechos.length < bl.length;
+    $("rutBtn").textContent = parcial ? "Continuar rutina"
+      : completa ? "Repetir rutina" : "Empezar rutina · 15 min";
+  }
+
+  async function empezarRutina(){
+    if(S.running) return;
+    if(!(await abrirMicro())) return;
+    R.orden = bloquesDeHoy();
+    let hechos = hechosHoy();
+    if(hechos.length >= R.orden.length){ R.datos.hoy = {fecha:fechaStr(), hechos:[]}; hechos = []; }
+    R.i = R.orden.findIndex(b=>hechos.indexOf(b.id) < 0);
+    if(R.i < 0) R.i = 0;
+    R.backup = {}; CFG_KEYS.forEach(k=>{ R.backup[k] = S[k]; });
+    R.activa = true; R.enBloque = false;
+    $("rutHead").hidden = false; $("rutInfo").hidden = false;
+    if(!S.tess){ R.pendiente = true; pintarBloque(R.orden[R.i]); beginMeasure(); return; }
+    rutinaMostrar();
+  }
+
+  function pintarBloque(b){
+    $("rutPaso").textContent = (R.i+1) + "/" + R.orden.length;
+    $("rutTit").textContent = b.titulo;
+    $("rutReloj").textContent = fmtReloj(R.enBloque ? R.resta : b.min*60000);
+    $("rutPorque").textContent = b.porque;
+    $("rutPasos").innerHTML = b.pasos.map(p=>"<li>" + p + "</li>").join("");
+    let meta = "";
+    if(b.id === "respira"){
+      const rec = mejorDe(R.datos.soplo);
+      meta = rec ? "Tu récord: " + rec.toFixed(1) + " s. Súbelo poco a poco, sin apretar." : "La app mide cuánto te dura el aire.";
+    }else if(b.id === "sirena"){
+      const rec = mejorDe(R.datos.sirena);
+      meta = rec ? "Tu sirena más amplia: " + Math.round(rec) + " semitonos." : "La barra muestra cuánto de tu rango recorres.";
+    }else if(b.id === "largas"){
+      meta = "Nivel " + (nivel()+1) + ": sostén " + (b.cfg.holdMs/1000) + " s dentro de ±" + b.cfg.tol + " ¢.";
+    }
+    $("rutMeta").textContent = meta;
+    $("rutInfo").open = true;
+    pintarProgreso();
+  }
+
+  function pintarProgreso(){
+    let total = 0, hecho = 0;
+    R.orden.forEach((b, i)=>{
+      total += b.min;
+      if(i < R.i) hecho += b.min;
+      else if(i === R.i && R.enBloque) hecho += b.min - R.resta/60000;
+    });
+    $("rutProg").style.width = (total ? hecho/total*100 : 0).toFixed(1) + "%";
+  }
+
+  // Pausa antes de cada bloque: aquí se leen las instrucciones con calma.
+  function rutinaMostrar(){
+    clearTimers(); pararBordon();
+    const b = R.orden[R.i];
+    R.enBloque = false; R.resta = b.min*60000;
+    S.mode = "rutinaPausa"; S.guia = null;
+    pintarBloque(b);
+    $("badge").textContent = "Paso " + (R.i+1) + " de " + R.orden.length;
+    $("noteName").innerHTML = "";
+    drawStaff(null, autoClef(), {});
+    $("arrow").className = "arrow"; $("arrow").textContent = "·";
+    $("hold").style.width = "0%";
+    $("msg").classList.remove("tuned");
+    $("msgMain").textContent = (R.i===0 ? "Primero: " : "Sigue: ") + b.titulo;
+    $("msgSub").textContent = "Lee abajo cómo se hace y toca «Vamos» (" + fmtMin(b.min) + ").";
+    $("toneBtn").textContent = "Vamos"; $("toneBtn").classList.add("primary");
+    $("skipBtn").textContent = "Saltar este";
+    $("toneBtn").disabled = false; $("skipBtn").disabled = false;
+  }
+
+  function rutinaIniciarBloque(){
+    const b = R.orden[R.i];
+    R.enBloque = true; R.resta = b.min*60000;
+    $("toneBtn").classList.remove("primary");
+    $("rutInfo").open = window.innerHeight > 760;   // en el teléfono, que no tape el pentagrama
+    if(b.tipo === "app"){
+      Object.assign(S, R.backup, b.cfg);
+      S.exStart = 0; S.vuelta = false; S.lives = 3;
+      startPlaying();
       return;
     }
-    $("startBtn").disabled = true;
+    S.mode = "guia";
+    S.guia = {tipo:b.tipo, fase:"inicio", t0:0, ini:0, ult:0, best:0, lo:null, hi:null, voz:0};
+    hist.length = 0;
+    $("toneBtn").textContent = "Escuchar nota"; $("toneBtn").disabled = true;
+    $("skipBtn").textContent = "Siguiente";
+    $("badge").textContent = b.titulo;
+    drawStaff(null, autoClef(), {});
+  }
+
+  // Devuelve true si el bloque terminó en este cuadro.
+  function rutinaTick(dt){
+    R.resta -= dt;
+    $("rutReloj").textContent = fmtReloj(R.resta);
+    pintarProgreso();
+    if(R.resta > 0) return false;
+    rutinaFinBloque(true);
+    return true;
+  }
+
+  function marcarHecho(id){
+    const f = fechaStr();
+    if(!R.datos.hoy || R.datos.hoy.fecha !== f) R.datos.hoy = {fecha:f, hechos:[]};
+    if(R.datos.hoy.hechos.indexOf(id) < 0) R.datos.hoy.hechos.push(id);
+    rutGuardar();
+  }
+
+  function guiaCerrar(){
+    const g = S.guia, f = fechaStr();
+    if(!g) return;
+    if(g.tipo === "soplo" && g.best) R.datos.soplo[f] = Math.max(R.datos.soplo[f] || 0, g.best);
+    if(g.tipo === "sirena" && g.lo !== null) R.datos.sirena[f] = Math.max(R.datos.sirena[f] || 0, g.hi - g.lo);
+    S.guia = null;
+    rutGuardar();
+  }
+
+  function rutinaFinBloque(hecho){
+    clearTimers(); pararBordon();
+    guiaCerrar();
+    if(hecho) marcarHecho(R.orden[R.i].id);
+    ding();
+    if(navigator.vibrate) navigator.vibrate([40,60,40]);
+    R.i++;
+    if(R.i >= R.orden.length){ rutinaCompleta(); return; }
+    rutinaMostrar();
+  }
+
+  function rutinaSiguiente(){
+    if(!R.activa || R.pendiente) return;
+    if(R.enBloque){
+      // Si ya hiciste la mayor parte, cuenta como hecho.
+      rutinaFinBloque(R.resta <= R.orden[R.i].min*60000*0.4);
+      return;
+    }
+    R.i++;
+    if(R.i >= R.orden.length){ rutinaCompleta(); return; }
+    rutinaMostrar();
+  }
+
+  function rutinaCompleta(){
+    const hechos = hechosHoy();
+    const todos = R.orden.every(b=>hechos.indexOf(b.id) >= 0);
+    if(todos && R.datos.dias.indexOf(fechaStr()) < 0){
+      R.datos.dias.push(fechaStr());
+      if(R.datos.dias.length > 400) R.datos.dias.shift();
+      rutGuardar();
+    }
+    const r = racha();
+    detener(todos ? "¡Rutina completa!" : "Fin de la rutina",
+      todos ? "Racha de " + r + (r===1 ? " día" : " días") + ". Mañana toca otra variación."
+            : "Te saltaste algunos ejercicios: «Continuar rutina» los retoma.");
+  }
+
+  function rutinaSalir(){
+    guiaCerrar();
+    if(R.backup) Object.assign(S, R.backup);
+    R.backup = null; R.activa = false; R.enBloque = false; R.pendiente = false;
+    S.mode = "practice";
+    guardar();
+    $("rutHead").hidden = true; $("rutInfo").hidden = true;
+    $("badge").textContent = "Listo"; $("noteName").innerHTML = "";
+    $("arrow").className = "arrow"; $("arrow").textContent = "·";
+    $("hold").style.width = "0%";
+    drawStaff(null, autoClef(), {});
+    pintarHoy();
+  }
+
+  /* ---- bloques guiados: sin pentagrama, con el micrófono como testigo ---- */
+  function guiaStep(d, ts, dt){
+    const g = S.guia;
+    if(!g) return;
+    const suena = d.f > 0 || (d.rms || 0) > UMBRAL_SONIDO;
+    if(g.tipo === "soplo") soploStep(g, suena, ts);
+    else if(g.tipo === "sirena") sirenaStep(g, d);
+    else calmaStep(g, d, suena, dt);
+  }
+
+  function notaVoz(d){
+    if(d.f <= 0){ hist.length = 0; return null; }
+    hist.push(d.f); if(hist.length > 4) hist.shift();
+    const m = freq2midi(median3());
+    return (m < FLOOR-3 || m > CEIL+3) ? null : m;
+  }
+
+  function soploStep(g, suena, ts){
+    if(g.fase === "descansa"){
+      if(ts - g.t0 < 2500) return;
+      g.fase = "inicio";
+    }
+    if(g.fase === "inicio"){ g.fase = "inhala"; g.t0 = ts; }
+    if(g.fase === "inhala"){
+      const p = (ts - g.t0)/4000;
+      $("hold").style.width = Math.min(100, p*100).toFixed(0) + "%";
+      $("arrow").className = "arrow"; $("arrow").textContent = "↑";
+      $("msgMain").textContent = "Inhala… " + Math.max(1, 4 - Math.floor((ts - g.t0)/1000));
+      $("msgSub").textContent = "Por la nariz: panza y costillas hacia afuera, hombros quietos.";
+      if(p >= 1){ g.fase = "suelta"; g.t0 = ts; g.ini = 0; g.ult = 0; }
+      return;
+    }
+    // fase «suelta»
+    if(suena){ if(!g.ini) g.ini = ts; g.ult = ts; }
+    if(!g.ini){
+      $("arrow").textContent = "↓";
+      $("hold").style.width = "0%";
+      $("msgMain").textContent = "Suelta en «vvvv»";
+      $("msgSub").textContent = "Parejo y suave, hasta que se acabe el aire.";
+      if(ts - g.t0 > 8000){ g.fase = "inhala"; g.t0 = ts; }
+      return;
+    }
+    const dur = (g.ult - g.ini)/1000;
+    const rec = mejorDe(R.datos.soplo);
+    $("hold").style.width = Math.min(100, dur/Math.max(10, rec, g.best)*100).toFixed(0) + "%";
+    if(ts - g.ult < 600){
+      $("msgMain").textContent = dur.toFixed(1) + " s";
+      $("msgSub").textContent = g.best ? "Tu mejor de hoy: " + g.best.toFixed(1) + " s" : "Parejo, sin empujar…";
+      return;
+    }
+    if(dur < 1.5){ g.ini = 0; return; }   // fue un ruido, no un soplo
+    g.best = Math.max(g.best, dur);
+    $("msgMain").textContent = dur.toFixed(1) + " s" + (rec && dur > rec ? " — ¡récord!" : "");
+    $("msgSub").textContent = "Descansa y prepárate para inhalar otra vez.";
+    $("arrow").textContent = "·";
+    g.fase = "descansa"; g.t0 = ts;
+  }
+
+  function sirenaStep(g, d){
+    const m = notaVoz(d);
+    const cubre = ()=> "Recorres " + midiLabel(g.lo) + " a " + midiLabel(g.hi) + " · " + Math.round(g.hi - g.lo) + " semitonos";
+    if(m === null){
+      $("arrow").className = "arrow"; $("arrow").textContent = "·";
+      $("msgMain").textContent = g.lo === null ? "Desliza de grave a agudo" : "Otra, un poquito más amplia";
+      $("msgSub").textContent = g.lo === null ? "En «ng» o «uuu», sin cortar el sonido." : cubre();
+      return;
+    }
+    g.lo = g.lo === null ? m : Math.min(g.lo, m);
+    g.hi = g.hi === null ? m : Math.max(g.hi, m);
+    const rango = S.tessFull ? S.tessFull.hi - S.tessFull.lo : 24;
+    showProbe(m, 0, null, true);
+    $("badge").textContent = "Sirenas";
+    $("hold").style.width = Math.min(100, (g.hi - g.lo)/rango*100).toFixed(0) + "%";
+    $("arrow").textContent = "~";
+    $("msgMain").textContent = midiLabel(m);
+    $("msgSub").textContent = cubre();
+  }
+
+  function calmaStep(g, d, suena, dt){
+    if(suena) g.voz += dt;
+    const m = notaVoz(d);
+    if(m !== null){ showProbe(m, 0, null, true); $("badge").textContent = "Enfriamiento"; }
+    $("arrow").className = "arrow"; $("arrow").textContent = suena ? "↘" : "·";
+    $("msgMain").textContent = suena ? "Así, suave y hacia abajo…" : "Zumba «mmm» y desliza hacia abajo";
+    $("msgSub").textContent = Math.round(g.voz/1000) + " s zumbando";
+  }
+
+  /* ---------------- controles ---------------- */
+  function detener(main, sub){
+    S.running = false;
+    clearTimers(); pararBordon();
+    cancelAnimationFrame(raf); raf=0;
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    if(ctx) ctx.close();
+    ctx=null; stream=null;
+    const eraRutina = R.activa;
+    if(eraRutina) rutinaSalir();
+    $("startBtn").textContent = "Práctica libre";
+    $("skipBtn").textContent = "Saltar";
+    $("toneBtn").textContent = "Escuchar nota";
+    $("toneBtn").classList.remove("primary");
+    $("toneBtn").disabled = true; $("skipBtn").disabled = true;
+    $("hoy").hidden = false;
+    $("msg").classList.remove("tuned");
+    $("msgMain").textContent = main || "Sesión detenida";
+    $("msgSub").textContent = sub || (eraRutina
+      ? "Tu avance de hoy quedó guardado: «Continuar rutina» sigue donde te quedaste."
+      : S.done+" notas logradas · mejor racha "+S.bestStreak);
+  }
+
+  async function abrirMicro(){
+    $("startBtn").disabled = true; $("rutBtn").disabled = true;
     $("msgMain").textContent = "Pidiendo micrófono…";
     try{
       await startAudio();
     }catch(err){
-      $("startBtn").disabled = false;
+      $("startBtn").disabled = false; $("rutBtn").disabled = false;
       const n = err && err.name ? err.name : "Error";
       const M = {
         InsecureContext:["Esta página no corre en un origen seguro","El micrófono solo funciona en https:// o http://localhost."],
@@ -1905,17 +2419,27 @@
       const m = M[n] || ["No se pudo abrir el micrófono","El navegador respondió: "+n+"."];
       $("msgMain").textContent = m[0];
       $("msgSub").textContent = m[1] + "  [" + n + "]";
-      return;
+      return false;
     }
-    $("startBtn").disabled = false;
+    $("startBtn").disabled = false; $("rutBtn").disabled = false;
     S.running = true; S.lastTs = 0;
     $("startBtn").textContent = "Detener";
     $("toneBtn").disabled = false; $("skipBtn").disabled = false;
-    if(!S.tess) beginMeasure(); else startPlaying();
+    $("hoy").hidden = true;
     raf = requestAnimationFrame(loop);
+    return true;
+  }
+
+  $("startBtn").addEventListener("click", async ()=>{
+    if(S.running){ detener(); return; }
+    if(!(await abrirMicro())) return;
+    if(!S.tess) beginMeasure(); else startPlaying();
   });
+  $("rutBtn").addEventListener("click", empezarRutina);
+  $("rutNext").addEventListener("click", rutinaSiguiente);
 
   $("toneBtn").addEventListener("click", ()=>{
+    if(S.mode==="rutinaPausa"){ rutinaIniciarBloque(); return; }
     if(S.mode==="anclaSing"){ anclaResultado(S.anchor + 99); return; }
     if(S.mode==="anclaShow"){ sound(S.anchor, 1400); return; }
     if(S.mode==="anchor" || S.mode==="measurePause"){ saltarMedicion(); return; }
@@ -1924,6 +2448,7 @@
     playTone();
   });
   $("skipBtn").addEventListener("click", ()=>{
+    if(S.mode==="rutinaPausa" || S.mode==="guia"){ rutinaSiguiente(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.play==="ancla" && S.tess){ anclaNueva(); return; }
     if(S.play==="vocaliz" && S.tess){ vocalizSiguiente(); return; }
@@ -2118,6 +2643,8 @@
   drawStaff(dia2note(34,0), "treble", {progress:0, voiceCents:null});
   $("badge").textContent = "Listo";
   cargar();
+  rutCargar();
+  pintarHoy();
 })();
 </script>
 </body>
