@@ -1545,7 +1545,10 @@
 
     if(R.activa && R.enBloque && rutinaTick(dt)) return;
     if(S.mode === "rutinaPausa"){ hist.length = 0; return; }
-    if(S.mode === "guia"){ guiaStep(d, ts, dt); return; }
+    if(S.mode === "guia"){
+      try{ guiaStep(d, ts, dt); S.fallas = 0; }catch(e){ reportarFalla(e); }
+      return;
+    }
     if(S.mode === "measurePause"){ pauseStep(d.f, ts); return; }
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
     if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
@@ -2629,6 +2632,16 @@
   }
 
   /* ---- bloques guiados: el micrófono como testigo ---- */
+  // Si un ejercicio guiado truena, decirlo en pantalla (con el error, para poder
+  // arreglarlo) en lugar de quedarse congelado en el último mensaje.
+  function reportarFalla(e){
+    S.fallas = (S.fallas || 0) + 1;
+    if(S.fallas === 1 && window.console) console.error(e);
+    if(S.fallas < 3) return;
+    $("msgMain").textContent = "Algo falló en este ejercicio";
+    $("msgSub").textContent = "Toca «Siguiente» para continuar. Error: " + (e && e.message ? e.message : e);
+  }
+
   function guiaStep(d, ts, dt){
     const g = S.guia;
     if(!g) return;
@@ -2802,8 +2815,8 @@
       g.voc = LARGA_VOC[g.n % LARGA_VOC.length];
       g.meta = metaLarga();
       g.n++;
-      sound(g.obj, 1300);
       paso("escucha");
+      try{ sound(g.obj, 1300); }catch(e){ reportarFalla(e); }
       showProbe(g.obj, 0, null, false);
       $("badge").textContent = "Nota larga · " + g.voc;
       $("arrow").textContent = "♪";
@@ -2914,6 +2927,7 @@
   /* ---------------- controles ---------------- */
   function detener(main, sub){
     S.running = false;
+    if(candado){ candado.release().catch(()=>{}); candado = null; }
     clearTimers(); pararBordon();
     cancelAnimationFrame(raf); raf=0;
     if(stream) stream.getTracks().forEach(t=>t.stop());
@@ -2933,6 +2947,20 @@
       ? "Tu avance de hoy quedó guardado: «Continuar rutina» sigue donde te quedaste."
       : S.done+" notas logradas · mejor racha "+S.bestStreak);
   }
+
+  // Mientras practicas la pantalla no se apaga: si se apaga, el navegador pausa la app.
+  let candado = null;
+  async function pantallaEncendida(){
+    try{
+      if(navigator.wakeLock && S.running && !candado){
+        candado = await navigator.wakeLock.request("screen");
+        candado.addEventListener("release", ()=>{ candado = null; });
+      }
+    }catch(e){ candado = null; }
+  }
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState === "visible") pantallaEncendida();
+  });
 
   async function abrirMicro(){
     $("startBtn").disabled = true; $("rutBtn").disabled = true;
@@ -2960,6 +2988,7 @@
     $("toneBtn").disabled = false; $("skipBtn").disabled = false;
     $("hoy").hidden = true; $("resumen").hidden = true;
     raf = requestAnimationFrame(loop);
+    pantallaEncendida();
     return true;
   }
 
