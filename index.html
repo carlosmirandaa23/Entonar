@@ -2046,14 +2046,14 @@
       "«Suelta en sss»: una «s» fina y pareja, lo más larga que puedas sin apretar. La app la cronometra y avisa si se oyó tu toma de aire."
     ]
   };
-  const B_SZ = {
-    id:"sz", titulo:"Prueba del aire: s / z", min:1.5, tipo:"sz",
-    porque:"Es una prueba clínica del escape de aire. Sin voz, la «s» solo depende de tus pulmones; con voz, la «z» depende también de qué tan bien cierran tus cuerdas. Si la «z» dura mucho menos que la «s», se está escapando aire por ellas.",
+  const B_EE = {
+    id:"ee", titulo:"Prueba del aire: «e» en secreto / «e» con voz", min:2, tipo:"ee",
+    porque:"Mide el escape de aire. En secreto (susurrando) las cuerdas no cierran y el aire solo depende de tus pulmones; con voz, también depende de qué tan bien cierran. Si la «e» con voz dura mucho menos que la susurrada, se está escapando aire por las cuerdas.",
     pasos:[
-      "Inhala bien y sostén una «sssss» lo más que puedas, parejo.",
-      "Descansa, inhala otra vez y sostén una «zzzzz» CON VOZ, como zumbido de abeja (no la «z» del español, que suena como «s»).",
-      "La app compara las dos duraciones. Cuanto más cerca de 1, mejor cierran tus cuerdas.",
-      "Hazlo con el mismo esfuerzo en las dos: no te guardes aire en ninguna."
+      "Inhala bien y di una «eeee» EN SECRETO, susurrada pero que se oiga, lo más larga que puedas y pareja.",
+      "Descansa, inhala otra vez y sostén una «eeee» CON VOZ, a volumen normal, lo más larga que puedas.",
+      "La app compara las dos duraciones. Cuanto más parecidas, mejor cierran tus cuerdas.",
+      "Mismo esfuerzo en las dos: no te guardes aire en ninguna."
     ]
   };
   const B_AMBULANCIA = {
@@ -2149,7 +2149,7 @@
        porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
        pasos:cal.pasos,
        cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
-      B_AIRE, B_SZ, B_AMBULANCIA, B_LARGA,
+      B_AIRE, B_EE, B_AMBULANCIA, B_LARGA,
       Object.assign({}, B_TERCERAS, {
         titulo: patT === "terceras5" ? "Terceras: apréndete las notas" : "Terceras completas (hasta la 9.ª)",
         pasos: B_TERCERAS.pasos.concat(["El patrón: " + (patT === "terceras5" ? silabasDe("terceras5")
@@ -2213,9 +2213,9 @@
     if(b.id === "aire"){
       const rec = mejorReciente("sss");
       meta = rec ? "Tu mejor «sss» reciente: " + rec.toFixed(1) + " s." : "Meta inicial: 15 s de «sss» parejo.";
-    }else if(b.id === "sz"){
-      const u = ultimo("sz");
-      meta = u ? "Tu última s/z: " + u.toFixed(2) + " (cerca de 1 es lo ideal)." : "Normal: entre 0.8 y 1.2. Arriba de 1.4 indica escape de aire.";
+    }else if(b.id === "ee"){
+      const u = ultimo("ee");
+      meta = u ? "Tu último cociente: " + u.toFixed(2) + " (cerca de 1 es lo ideal)." : "Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire. Lo más útil es ver cómo baja con los días.";
     }else if(b.id === "ambulancia"){
       const rec = mejorDe(R.datos.sirena);
       meta = rec ? "Tu sirena más amplia: " + Math.round(rec) + " semitonos." : "La barra muestra cuánto de tu rango recorres.";
@@ -2370,7 +2370,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], sz:null, largas:[]}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[]}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2401,7 +2401,7 @@
       M.afin = promedio(N.map(x=>x.abs));
       M.sesgo = promedio(N.map(x=>x.s));
     }
-    if(X.sz) M.sz = X.sz;
+    if(X.ee) M.ee = X.ee;
     if(X.inhala.length){ M.nInh = X.inhala.length; M.ruidosas = X.inhala.filter(Boolean).length; }
     if(X.sss.length) M.sss = Math.max.apply(null, X.sss);
     const L = X.largas.filter(x=>x.dur >= 3);
@@ -2418,7 +2418,7 @@
     return M;
   }
 
-  const METRICAS = ["sz","larga","estab","claridad","sss","sirena"];
+  const METRICAS = ["ee","larga","estab","claridad","sss","sirena"];
 
   // Promedio de los días anteriores (hasta 7) para comparar.
   function previo(){
@@ -2437,13 +2437,13 @@
     const add = (lista, score, txt, tip)=> lista.push({score:score, txt:txt, tip:tip||""});
 
     // 1. Escape de aire
-    if(M.sz){
-      const r = M.sz.ratio, txt = "s " + M.sz.s.toFixed(1) + " s · z " + M.sz.z.toFixed(1) + " s";
-      if(r >= 1.4) add(mal, 3.5, "Tu «z» duró mucho menos que tu «s» (s/z = " + r.toFixed(2) + "; " + txt + "): se está escapando aire por las cuerdas.",
-        "Busca inicios limpios: canta «mi-mi-mi» cortas y suaves, sin aire antes del sonido, y pasa de «mmm» a «iii» sin cortar. Piensa en un sonido brillante, no soplado. Si la s/z sigue arriba de 1.4 varias semanas, coméntalo con tu maestra.");
-      else if(r > 1.2) add(mal, 2, "Un poco de escape de aire: s/z = " + r.toFixed(2) + " (" + txt + ").",
-        "Los ejercicios de popote y «mmm» → «iii» ayudan a que las cuerdas cierren mejor. Tu meta: acercarla a 1.");
-      else add(bien, 2.5, "Buen cierre de cuerdas: s/z = " + r.toFixed(2) + " (" + txt + ").");
+    if(M.ee){
+      const r = M.ee.ratio, txt = "en secreto " + M.ee.s.toFixed(1) + " s · con voz " + M.ee.v.toFixed(1) + " s";
+      if(r >= 1.4) add(mal, 3.5, "Tu «e» con voz duró mucho menos que la susurrada (cociente " + r.toFixed(2) + "; " + txt + "): se está escapando aire por las cuerdas.",
+        "Busca inicios limpios: canta «mi-mi-mi» cortas y suaves, sin aire antes del sonido, y pasa de «mmm» a «iii» sin cortar. Piensa en un sonido brillante, no soplado. Si sigue arriba de 1.4 varias semanas, coméntalo con tu maestra.");
+      else if(r > 1.2) add(mal, 2, "Un poco de escape de aire: cociente " + r.toFixed(2) + " (" + txt + ").",
+        "Los ejercicios de popote y «mmm» → «iii» ayudan a que las cuerdas cierren mejor. Tu meta: acercarlo a 1.");
+      else add(bien, 2.5, "Buen cierre de cuerdas: cociente " + r.toFixed(2) + " (" + txt + ").");
     }
     // 2. Toma de aire
     if(M.nInh >= 3){
@@ -2495,7 +2495,7 @@
 
     // Guarda el día para comparar mañana.
     const f = fechaStr(), H = R.datos.hist[f] || {};
-    const vals = {sz: M.sz ? M.sz.ratio : undefined, larga:M.larga, estab:M.estab, claridad:M.claridad, sss:M.sss, sirena:M.sirena};
+    const vals = {ee: M.ee ? M.ee.ratio : undefined, larga:M.larga, estab:M.estab, claridad:M.claridad, sss:M.sss, sirena:M.sirena};
     METRICAS.forEach(k=>{
       if(vals[k] === undefined) return;
       H[k] = (k === "larga" || k === "sss" || k === "sirena") ? Math.max(H[k] || 0, vals[k]) : vals[k];
@@ -2505,7 +2505,7 @@
     while(llaves.length > 120) delete R.datos.hist[llaves.shift()];
 
     const filas = [
-      ["sz", "Escape de aire (s/z)", v=>v.toFixed(2), false],
+      ["ee", "Escape de aire (susurro/voz)", v=>v.toFixed(2), false],
       ["larga", "Nota más larga", v=>v.toFixed(1) + " s", true],
       ["estab", "Movimiento al sostener", v=>"±" + Math.round(v) + " ¢", false],
       ["claridad", "Claridad (aprox.)", v=>Math.round(v*100) + " %", true],
@@ -2573,7 +2573,7 @@
       g.fase = "listo";
     }
     if(g.tipo === "aire") aireStep(g, d, ts, dt);
-    else if(g.tipo === "sz") szStep(g, d, ts, dt);
+    else if(g.tipo === "ee") eeStep(g, d, ts, dt);
     else if(g.tipo === "larga") largaStep(g, d, ts, dt);
   }
 
@@ -2656,44 +2656,56 @@
     }
   }
 
-  function szStep(g, d, ts, dt){
+  // «e» susurrada contra «e» con voz: misma vocal, solo cambia si las cuerdas vibran.
+  function eeStep(g, d, ts, dt){
     const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
-    if(g.fase === "listo"){ g.letra = "s"; g.s = 0; g.z = 0; paso("inhala"); }
+    const conVoz = g.cual === "voz";
+    if(g.fase === "listo"){ g.cual = "secreto"; g.s = 0; g.v = 0; paso("inhala"); }
     if(g.fase === "descansa"){ if(ts - g.t0 > 3500) paso("inhala"); return; }
     if(g.fase === "fin"){ if(ts - g.t0 > 5000){ rutinaFinBloque(true); } return; }
     if(g.fase === "inhala"){
       inhalaStep(g, d, ts, dt, 3000, ()=>{ paso("sostiene"); g.ini = 0; g.nFr = 0; g.nVoz = 0; });
       return;
     }
-    const L = g.letra === "s" ? "«sssss» sin voz" : "«zzzzz» con voz (abeja)";
-    const r = cronoStep(g, d, ts, g.letra === "z");
+    const r = cronoStep(g, d, ts, true);
     if(!r){
       $("arrow").textContent = "→"; $("hold").style.width = "0%";
-      $("msgMain").textContent = "Sostén " + L;
-      $("msgSub").textContent = "Lo más largo que puedas, mismo esfuerzo en las dos.";
+      $("msgMain").textContent = conVoz ? "Sostén «eeee» CON VOZ" : "Sostén «eeee» EN SECRETO";
+      $("msgSub").textContent = conVoz ? "Volumen normal, lo más larga que puedas." : "Susurrada pero que se oiga, lo más larga que puedas.";
       if(!g.ini && ts - g.t0 > 8000) paso("inhala");
       return;
     }
     $("hold").style.width = Math.min(100, r.dur/25*100).toFixed(0) + "%";
-    if(r.vivo){ $("msgMain").textContent = (g.letra === "s" ? "s: " : "z: ") + r.dur.toFixed(1) + " s"; return; }
-    if(g.letra === "s"){
-      g.s = r.dur; g.letra = "z";
-      $("msgMain").textContent = "«s»: " + r.dur.toFixed(1) + " s";
-      $("msgSub").textContent = "Descansa. Ahora la «z» CON VOZ.";
+    if(r.vivo){
+      $("msgMain").textContent = (conVoz ? "Con voz: " : "En secreto: ") + r.dur.toFixed(1) + " s";
+      $("msgSub").textContent = "Pareja, hasta que se acabe el aire.";
+      return;
+    }
+    const voz = g.nFr ? g.nVoz/g.nFr : 0;
+    if(!conVoz){
+      if(voz > 0.3){
+        $("msgMain").textContent = "Eso tuvo voz";
+        $("msgSub").textContent = "La primera va en secreto, solo aire, como cuando cuentas un chisme. Otra vez.";
+        paso("descansa");
+        return;
+      }
+      g.s = r.dur; g.cual = "voz";
+      $("msgMain").textContent = "En secreto: " + r.dur.toFixed(1) + " s";
+      $("msgSub").textContent = "Descansa. Ahora la «e» CON VOZ.";
       paso("descansa");
       return;
     }
-    if(g.nFr && g.nVoz/g.nFr < 0.3){
-      $("msgMain").textContent = "No escuché voz en la «z»";
-      $("msgSub").textContent = "Tiene que zumbar como abeja, con la garganta vibrando. Otra vez.";
+    if(voz < 0.3){
+      $("msgMain").textContent = "No escuché voz";
+      $("msgSub").textContent = "Esta va con voz normal, como si hablaras. Otra vez.";
       paso("descansa");
       return;
     }
-    g.z = r.dur;
-    const ratio = g.s/g.z;
-    if(R.ses) R.ses.sz = {s:g.s, z:g.z, ratio:ratio};
-    $("msgMain").textContent = "s/z = " + ratio.toFixed(2);
-    $("msgSub").textContent = "s " + g.s.toFixed(1) + " s · z " + g.z.toFixed(1) + " s · "
+    g.v = r.dur;
+    const ratio = g.s/g.v;
+    if(R.ses) R.ses.ee = {s:g.s, v:g.v, ratio:ratio};
+    $("msgMain").textContent = "Cociente " + ratio.toFixed(2);
+    $("msgSub").textContent = "en secreto " + g.s.toFixed(1) + " s · con voz " + g.v.toFixed(1) + " s · "
       + (ratio > 1.4 ? "hay escape de aire" : ratio > 1.2 ? "algo de escape" : "buen cierre");
     paso("fin");
   }
