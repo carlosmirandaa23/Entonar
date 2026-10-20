@@ -499,14 +499,14 @@
     echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", vuelta:false, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
-    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null, nBuf:[], atq:null, letra:"no", letraRondas:0
+    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null, nBuf:[], atq:null, letra:"no", letraRondas:0, memEtapa:null, rondaLimpia:true
   };
 
   // Rutina diaria: qué bloque toca, cuánto falta y los ajustes del usuario
   // guardados aparte mientras la rutina impone los suyos.
   const R = {
     activa:false, pendiente:false, orden:[], i:0, resta:0, enBloque:false, backup:null, ses:null,
-    datos:{dias:[], hoy:null, sirena:{}, hist:{}, resumen:null, notas:null}
+    datos:{dias:[], hoy:null, sirena:{}, hist:{}, resumen:null, notas:null, terceras:{}}
   };
 
   const $ = id => document.getElementById(id);
@@ -1116,7 +1116,8 @@
       const cantando = S.mode === "arcadeSing";
       const hecha = cantando && i < S.seqI;
       const actual = (opts.playIndex===i) || (cantando && i===S.seqI);
-      const col = hecha ? "#2F8F72" : actual ? "#B08A16" : "#1A2135";
+      // de memoria: las notas por cantar apenas se ven, para no leerlas
+      const col = hecha ? "#2F8F72" : actual ? "#B08A16" : S.memEtapa === 2 ? "#D9D2BF" : "#1A2135";
       s += ledgerSvg(x, y, cl);
       if(it.alter!==0)
         s += '<text x="'+(x-26)+'" y="'+(y+6)+'" font-size="20" fill="'+col+'" font-family="serif">'+(it.alter===1?"\u266F":"\u266D")+'</text>';
@@ -1354,10 +1355,12 @@
     $("hold").style.width = "0%";
     drawSequence({playIndex:-1});
     if(S.running) bordonPulso();
-    $("msgMain").textContent = "Escucha la secuencia";
-    $("msgSub").textContent = S.seq.length + " notas · después las cantas en orden";
-    const DUR = 620, HUECO = 140;
-    S.seq.forEach((n, i)=>{
+    const memoria = S.memEtapa === 2;   // solo suena la primera: el resto, de memoria
+    $("msgMain").textContent = memoria ? "De memoria: escucha la primera" : "Escucha la secuencia";
+    $("msgSub").textContent = memoria ? "Después cantas el patrón completo sin oírlo"
+      : S.seq.length + " notas · después las cantas en orden";
+    const DUR = 620, HUECO = 140, cuantas = memoria ? 1 : S.seq.length;
+    S.seq.slice(0, cuantas).forEach((n, i)=>{
       S.timers.push(setTimeout(()=>{
         S.playI = i;
         drawSequence({playIndex:i});
@@ -1372,7 +1375,7 @@
       $("msgMain").textContent = "Ahora cántalas en orden";
       $("msgSub").textContent = "Desde la primera. Sostén cada una.";
       if(navigator.vibrate) navigator.vibrate(40);
-    }, 400 + S.seq.length*(DUR+HUECO) + 300));
+    }, 400 + cuantas*(DUR+HUECO) + (memoria ? 600 : 300)));
   }
 
   function arcadeStep(f, ts, dt){
@@ -1417,12 +1420,15 @@
     S.mode = "arcadeDone";
     S.round++; S.streak++;
     if(S.letra === "memoria") S.letraRondas++;
+    const subio = S.memEtapa !== null ? tercerasAvance(S.rondaLimpia) : 0;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     $("stDone").textContent = S.round;
     $("stStreak").textContent = S.streak;
     const voc = S.play === "vocaliz";
     const iv = voc && PATRONES_IV[S.patron] && !S.vuelta;
-    $("msgMain").textContent = voc ? "Bien — transponemos" : "¡Ronda completa!";
+    $("msgMain").textContent = subio > 0 ? "¡Subes de nivel! Ahora: " + ETAPAS_T[S.memEtapa]
+      : subio < 0 ? "Bajamos un nivel para afianzar"
+      : voc ? "Bien — transponemos" : "¡Ronda completa!";
     $("msgSub").textContent = iv ? "Ahora el mismo camino de regreso"
       : voc ? (S.exDir<0 ? "Medio tono abajo" : "Medio tono arriba")
       : "Ronda " + (S.round+1) + " en camino…";
@@ -1438,6 +1444,7 @@
     clearTimers();
     S.mode = "arcadeDone";
     if(S.play !== "vocaliz") S.lives--;
+    S.rondaLimpia = false;
     S.wrongMs = 0; S.progress = 0; hist.length = 0; resetNota(); S.atq = null;
     if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
     $("badge").textContent = CLEF[S.seqClef].label + livesText();
@@ -1708,13 +1715,22 @@
 
   function vocalizNueva(){
     clearTimers();
+    S.rondaLimpia = true;
     const par = PATRONES_IV[S.patron];
     const clave = par ? par[S.vuelta ? 1 : 0] : S.patron;
     const diat = PATRONES_G[clave];
     const p = diat ? diat.map(grado2semi) : (PATRONES[clave] || PATRONES.esc5);
-    const lo = Math.min.apply(null,p), hi = Math.max.apply(null,p);
-    const minIni = (S.tess ? S.tess.lo : 48) - lo;
-    const maxIni = (S.tess ? S.tess.hi : 72) - hi;
+    // En los de ida y vuelta, el rango cuenta los dos renglones: si no, el de
+    // regreso se sale y el ejercicio rebota sin avanzar.
+    const filas = par ? par.map(c=>PATRONES_G[c] ? PATRONES_G[c].map(grado2semi) : PATRONES[c]) : [p];
+    const todas = [].concat.apply([], filas);
+    const lo = Math.min.apply(null,todas), hi = Math.max.apply(null,todas);
+    // Patrones casi tan amplios como tu zona cómoda usan tu rango completo
+    // medido, para que quede espacio de transponer.
+    let T = S.tess;
+    if(T && S.tessFull && (hi - lo) > (T.hi - T.lo) - 4) T = S.tessFull;
+    const minIni = (T ? T.lo : 48) - lo;
+    const maxIni = (T ? T.hi : 72) - hi;
     if(!S.exStart){
       // Empieza en la zona baja-media de tu rango (no en el fondo), así hay
       // espacio para transponer y la primera ronda no sale ahogada. Si el
@@ -2037,7 +2053,7 @@
   ];
 
   const B_AIRE = {
-    id:"aire", titulo:"Toma de aire elegante", min:3, tipo:"aire",
+    id:"aire", titulo:"Toma de aire elegante", min:6, tipo:"aire",
     porque:"Indicación de tu maestra: mucho aire, pero elegante. Una toma silenciosa y baja llena más y deja la garganta abierta; soltarlo en «sss» parejo te enseña a gastarlo poco a poco.",
     pasos:[
       "«Saca el aire»: suelta todo sin forzar.",
@@ -2057,7 +2073,7 @@
     ]
   };
   const B_AMBULANCIA = {
-    id:"ambulancia", titulo:"Ambulancia con «i»", min:2, tipo:"sirena",
+    id:"ambulancia", titulo:"Ambulancia con «i»", min:3, tipo:"sirena",
     porque:"Indicación de tu maestra. La «i» acerca las cuerdas y deja escapar menos aire que la «a»; deslizarla de grave a agudo une los registros sin que se rompa la voz.",
     pasos:[
       "Sonríe un poquito y canta «iiii» con la lengua apoyada detrás de los dientes de abajo.",
@@ -2067,25 +2083,61 @@
     ]
   };
   const B_LARGA = {
-    id:"larga", titulo:"Nota larga en un solo aliento", min:3.5, tipo:"larga",
+    id:"larga", titulo:"Nota larga en un solo aliento", min:8, tipo:"larga",
     porque:"Trabaja los dos puntos que más te fallan: que no se escape aire y que la nota no se mueva. La app mide cuánto duras, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y qué tan limpio (sin aire) suena.",
     pasos:[
       "Escucha la nota de referencia.",
       "Toma aire en silencio (elegante) mientras la app cuenta.",
       "Canta la nota en la vocal que pide, a volumen cómodo, y sostenla hasta que se acabe el aire. No la empujes al final: cuando ya no da, suelta.",
-      "Imagina la nota como una línea recta y el aire saliendo poquito a poquito. Mira el aro: se llena hacia tu meta."
+      "Imagina la nota como una línea recta y el aire saliendo poquito a poquito. Mira el aro: se llena hacia tu meta.",
+      "Cuando pida «mmm» → «iii», empieza zumbando con la boca cerrada y abre a la vocal sin cortar el sonido: así las cuerdas ya están juntas cuando sale la vocal y se escapa menos aire."
     ]
   };
-  const B_TERCERAS = {
-    id:"terceras", tipo:"app", min:2.5,
-    porque:"Indicación de tu maestra: aprenderte las notas de las terceras. Bajo cada nota ves su sílaba; después de dos rondas se ocultan y aparecen solo cuando las cantas bien.",
-    pasos:[
-      "Escucha el acorde y el patrón completo.",
-      "Cántalo DICIENDO el nombre de cada nota (do móvil: la primera siempre es «do», aunque la tonalidad suba).",
-      "Desde la tercera ronda las sílabas se ocultan: intenta saberlas de memoria.",
-      "Si llega muy agudo o muy grave, toca «Otra ronda»: nunca fuerces."
-    ]
-  };
+  // Terceras por niveles: primero con sílabas, luego sin sílabas y al final sin
+  // escuchar el patrón (solo la primera nota). Tres rondas limpias seguidas suben
+  // de nivel; tres rondas con fallos seguidas bajan uno.
+  const ETAPAS_T = ["escuchas el patrón y ves las sílabas", "escuchas el patrón, sílabas ocultas", "de memoria: solo suena la primera nota"];
+  function bloqueTerceras(id, clave, titulo, min, extra){
+    const e = (R.datos.terceras[clave] || {}).etapa || 0;
+    return {
+      id:id, tipo:"app", min:min, titulo:titulo, clave:clave,
+      porque:"Indicación de tu maestra: aprenderte las terceras. El objetivo no es memorizar sílabas, sino oír cada salto antes de cantarlo, afinado y con la voz unida. Por eso el ejercicio te va quitando ayudas: primero las sílabas y luego el patrón.",
+      pasos:[
+        "Nivel " + (e+1) + " de 3: " + ETAPAS_T[e] + ".",
+        "Cántalo diciendo el nombre de cada nota en do móvil: la primera siempre es «do», aunque la tonalidad suba.",
+        "Todo unido (legato), sin cortar el aire entre nota y nota.",
+        "El patrón: " + extra,
+        "Tres rondas sin fallar te suben de nivel. Si llega muy agudo o muy grave, toca «Otra ronda»."
+      ],
+      cfg:{play:"vocaliz", patron:clave, exDir:1, tol:45, holdMs:600, acorde:"si"}
+    };
+  }
+
+  function tercerasAvance(limpia){
+    const k = S.memClave, T = R.datos.terceras[k] || (R.datos.terceras[k] = {etapa:0, racha:0, malas:0});
+    let cambio = 0;
+    if(limpia){
+      T.racha++; T.malas = 0;
+      if(T.racha >= 3 && T.etapa < 2){ T.etapa++; T.racha = 0; cambio = 1; }
+    }else{
+      T.racha = 0; T.malas++;
+      if(T.malas >= 3 && T.etapa > 0){ T.etapa--; T.malas = 0; cambio = -1; }
+    }
+    if(R.ses){ R.ses.terceras[k] = {etapa:T.etapa, sube:(R.ses.terceras[k] || {}).sube || cambio > 0}; }
+    aplicarEtapa(T.etapa);
+    rutGuardar();
+    const li = $("rutPasos").firstChild;
+    if(li) li.textContent = "Nivel " + (T.etapa+1) + " de 3: " + ETAPAS_T[T.etapa] + ".";
+    $("rutMeta").textContent = "Tu nivel: " + (T.etapa+1) + " de 3"
+      + (T.etapa < 2 ? " · llevas " + T.racha + " de 3 rondas limpias para subir." : " · ¡ya lo cantas de memoria!");
+    return cambio;
+  }
+
+  function aplicarEtapa(e){
+    S.memEtapa = e;
+    S.letra = e === 0 ? "si" : "memoria";
+    S.letraRondas = e === 0 ? 0 : 2;    // en «memoria» con 2 rondas ya se ocultan
+  }
 
   function fechaStr(d){
     d = d || new Date();
@@ -2102,6 +2154,7 @@
       R.datos.hist = d.hist || {};
       R.datos.resumen = d.resumen || null;
       if(typeof d.notas === "string") R.datos.notas = d.notas;
+      R.datos.terceras = d.terceras || {};
     }catch(e){}
   }
   function hechosHoy(){ const h = R.datos.hoy; return h && h.fecha === fechaStr() ? h.hechos : []; }
@@ -2141,20 +2194,15 @@
   function bloquesDeHoy(){
     const n = diaN(), nv = nivel();
     const cal = CALENTAMIENTOS[n % CALENTAMIENTOS.length];
-    // Terceras dentro de una quinta para aprenderlas; desde la segunda semana
-    // se alterna con la escala completa de terceras (llega a la novena).
-    const patT = nv >= 1 && n % 2 ? "tercerasIV" : "terceras5";
     return [
-      {id:"calent", titulo:cal.titulo, min:2, tipo:"app",
+      {id:"calent", titulo:cal.titulo, min:3, tipo:"app",
        porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
        pasos:cal.pasos,
        cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
       B_AIRE, B_EE, B_AMBULANCIA, B_LARGA,
-      Object.assign({}, B_TERCERAS, {
-        titulo: patT === "terceras5" ? "Terceras: apréndete las notas" : "Terceras completas (hasta la 9.ª)",
-        pasos: B_TERCERAS.pasos.concat(["El patrón: " + (patT === "terceras5" ? silabasDe("terceras5")
-          : silabasDe("terceras") + " y de regreso.")]),
-        cfg:{play:"vocaliz", patron:patT, exDir:1, tol:45, holdMs:600, acorde:"si", letra:"memoria"}})
+      bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 4, silabasDe("terceras5") + "."),
+      bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 4,
+        "sube " + silabasDe("terceras") + " y baja " + silabasDe("tercerasB") + ".")
     ];
   }
 
@@ -2219,6 +2267,9 @@
     }else if(b.id === "ambulancia"){
       const rec = mejorDe(R.datos.sirena);
       meta = rec ? "Tu sirena más amplia: " + Math.round(rec) + " semitonos." : "La barra muestra cuánto de tu rango recorres.";
+    }else if(b.clave){
+      const T = R.datos.terceras[b.clave] || {etapa:0, racha:0};
+      meta = "Tu nivel: " + (T.etapa+1) + " de 3" + (T.etapa < 2 ? " · llevas " + (T.racha||0) + " de 3 rondas limpias para subir." : " · ¡ya lo cantas de memoria!");
     }else if(b.id === "larga"){
       meta = "Tu meta de hoy: " + metaLarga() + " s por nota, sin que se mueva.";
     }
@@ -2247,7 +2298,7 @@
     clearTimers(); pararBordon();
     const b = R.orden[R.i];
     R.enBloque = false; R.resta = b.min*60000;
-    S.mode = "rutinaPausa"; S.guia = null;
+    S.mode = "rutinaPausa"; S.guia = null; S.memEtapa = null;
     pintarBloque(b);
     $("badge").textContent = "Paso " + (R.i+1) + " de " + R.orden.length;
     $("noteName").innerHTML = "";
@@ -2270,6 +2321,7 @@
     if(b.tipo === "app"){
       Object.assign(S, R.backup, b.cfg);
       S.exStart = 0; S.vuelta = false; S.lives = 3; S.letraRondas = 0;
+      if(b.clave){ S.memClave = b.clave; aplicarEtapa((R.datos.terceras[b.clave] || {}).etapa || 0); }
       startPlaying();
       return;
     }
@@ -2359,7 +2411,7 @@
     if(R.ses){ mostrarResumen(generarResumen()); R.ses = null; }
     if(R.backup) Object.assign(S, R.backup);
     R.backup = null; R.activa = false; R.enBloque = false; R.pendiente = false;
-    S.mode = "practice";
+    S.mode = "practice"; S.memEtapa = null;
     guardar();
     $("rutHead").hidden = true; $("rutInfo").hidden = true;
     $("badge").textContent = "Listo"; $("noteName").innerHTML = "";
@@ -2370,7 +2422,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[]}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2492,6 +2544,11 @@
       "Escucha el patrón completo antes de cantar y apóyate en las sílabas.");
     if(M.fallos >= 3) add(mal, M.fallos/4, "Se escaparon " + M.fallos + " notas en las terceras.",
       "Repite el patrón diciendo las sílabas sin cantar, y luego cantándolas.");
+
+    Object.keys(R.ses.terceras).forEach(k=>{
+      const t = R.ses.terceras[k], nom = k === "terceras5" ? "Terceras en una quinta" : "Terceras completas";
+      if(t.sube) add(bien, 2.2, nom + ": subiste al nivel " + (t.etapa+1) + " (" + ETAPAS_T[t.etapa] + ").");
+    });
 
     // Guarda el día para comparar mañana.
     const f = fechaStr(), H = R.datos.hist[f] || {};
@@ -2712,7 +2769,8 @@
 
   // Notas centradas un poco abajo de la mitad de tu zona cómoda, variando alrededor.
   const LARGA_OFS = [0, 2, -2, 3, -1, 4, 1];
-  const LARGA_VOC = ["«i»", "«a»", "«i»", "«o»"];
+  // «mmm» → «iii»: empezar zumbando deja las cuerdas juntas antes de abrir la vocal.
+  const LARGA_VOC = ["«i»", "«a»", "«mmm» → «iii»", "«o»", "«i»", "«mmm» → «aaa»"];
   function largaStep(g, d, ts, dt){
     const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
     if(g.fase === "listo" || g.fase === "resultado" && ts - g.t0 > 5000){
