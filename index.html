@@ -759,7 +759,10 @@
       ? "  ·  medido " + midiLabel(S.tessFull.lo) + "–" + midiLabel(S.tessFull.hi)
       : "";
     $("tessInfo").textContent = (S.tessLabel ? S.tessLabel+": " : "")
-      + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado;
+      + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado
+      + (S.tessFull.hi - S.tessFull.lo > 30
+        ? "  ·  Es muy amplio: probablemente incluye falsete o notas forzadas. Vuelve a medir sin forzar, o fíjalo a mano."
+        : "");
     buildPool();
     guardar();
   }
@@ -1735,11 +1738,16 @@
       // Empieza en la zona baja-media de tu rango (no en el fondo), así hay
       // espacio para transponer y la primera ronda no sale ahogada. Si el
       // patrón no cabe entero en tu zona, se centra.
-      const margen = Math.max(0, Math.round((maxIni - minIni)*0.3));
+      // La nota más grave del patrón se ubica dentro de tu rango repartiendo el
+      // espacio que sobra 40 % abajo y 60 % arriba. Un rango medido muy amplio
+      // (con falsete o notas rascadas) cuenta solo sus dos octavas centrales.
+      const rLo = T ? T.lo : 48, rHi = T ? T.hi : 72;
+      const ancho = Math.min(rHi - rLo, 24), zLo = (rLo + rHi)/2 - ancho/2;
+      const grave = Math.round(zLo + Math.max(0, ancho - (hi - lo))*0.4);
       if(S.patron === "escalera") S.exStart = minIni;
       else if(S.patron === "escaleraB") S.exStart = maxIni;
       else if(maxIni < minIni) S.exStart = Math.round((minIni + maxIni)/2);
-      else S.exStart = S.exDir < 0 ? maxIni - margen : minIni + margen;
+      else S.exStart = Math.max(minIni, Math.min(maxIni, grave - lo));
     }
     if(diat){
       // la tonalidad sigue al ejercicio, para que grados y bordón concuerden
