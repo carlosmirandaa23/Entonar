@@ -2,25 +2,33 @@
 
 Entrenador de afinación y lectura para la voz, en una sola página (`index.html`). El micrófono se procesa en el dispositivo.
 
-## Rutina de hoy (unos 15 min)
+## Rutina de hoy (30 min)
 
 Está enfocada en el **aire** (la toma, cuánto dura y cuánto se escapa por las cuerdas) y en **sostener la nota sin que se mueva**, siguiendo las indicaciones de la maestra. Antes de cada ejercicio la app explica cómo hacerlo y para qué sirve. Después cuenta el tiempo y pasa sola al siguiente.
 
 | # | Ejercicio | Min | Qué mide la app |
 |---|-----------|-----|-----------------|
-| 1 | **Un solo calentamiento** que cambia cada día: trinos, popote, «mmm» o «ng» | 2 | Afinación del vocalise |
-| 2 | **Toma de aire elegante**: sacar el aire, inhalar en silencio, sostener y soltar en «sss» | 3 | Si se oyó la toma de aire y cuánto dura el «sss» |
-| 3 | **Prueba del aire**: «e» en secreto (susurrada) contra «e» con voz | 2 | El cociente entre las dos duraciones. Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire. Avisa si la susurrada lleva voz o si la otra no la lleva |
-| 4 | **Ambulancia con «i»** | 2 | Alcance y posible quiebre de registro |
-| 5 | **Nota larga en un solo aliento** | 3½ | Duración, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y la claridad aproximada (cuánto aire se oye) |
-| 6 | **Terceras para aprenderse las notas** (1-3-2-4-3-5-4-2-1) | 2½ | Sílabas en do móvil bajo cada nota. Después de dos rondas se ocultan hasta que las cantas |
+| 1 | **Un solo calentamiento** que cambia cada día: trinos, popote, «mmm» o «ng» | 3 | Afinación del vocalise |
+| 2 | **Toma de aire elegante**: sacar el aire, inhalar en silencio, sostener y soltar en «sss» | 6 | Si se oyó la toma de aire y cuánto dura el «sss» |
+| 3 | **Prueba del aire**: «e» en secreto (susurrada) contra «e» con voz | 2 | El cociente entre las dos duraciones. Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire |
+| 4 | **Ambulancia con «i»** | 3 | Alcance y posible quiebre de registro |
+| 5 | **Nota larga en un solo aliento**, en «i», «a», «o» y «mmm» → vocal | 8 | Duración, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y la claridad aproximada |
+| 6 | **Terceras en una quinta** (do-mi-re-fa-mi-sol-fa-re-do) | 4 | Nivel de memoria |
+| 7 | **Terceras completas: subida y bajada**, hasta la 9.ª y de regreso | 4 | Nivel de memoria |
+
+**Las terceras van por niveles**, por separado en cada patrón:
+
+1. Escuchas el patrón y ves las sílabas en do móvil.
+2. Escuchas el patrón, pero las sílabas están ocultas.
+3. De memoria: solo suena la primera nota. Las demás aparecen tenues en el pentagrama hasta que las cantas.
+
+Tres rondas limpias seguidas te suben de nivel; tres rondas con fallos seguidas te bajan uno.
 
 - La meta de la nota larga y la del «sss» suben solas con tus récords.
-- Desde la segunda semana, las terceras alternan con la escala completa de terceras, que llega a la 9.ª.
 - En Ajustes → **Clase** puedes escribir las indicaciones de tu maestra. Aparecen en la tarjeta de la rutina.
 - Si dejas la rutina a medias, «Continuar rutina» la retoma donde te quedaste.
 - **Práctica libre** conserva todos los modos (lectura, arcade, ancla, vocalises).
-- Los vocalises ahora arrancan en la zona baja-media de tu rango, no en tu nota más grave. Si un patrón no cabe entero en tu zona cómoda, queda centrado.
+- Los vocalises arrancan en la zona baja-media de tu rango. Si un patrón es casi tan amplio como tu zona cómoda, usan tu rango completo medido para que quede espacio de transponer.
 
 ## Resumen al terminar
 
