@@ -759,7 +759,10 @@
       ? "  ·  medido " + midiLabel(S.tessFull.lo) + "–" + midiLabel(S.tessFull.hi)
       : "";
     $("tessInfo").textContent = (S.tessLabel ? S.tessLabel+": " : "")
-      + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado;
+      + midiLabel(lo) + " a " + midiLabel(hi) + " (" + (hi-lo) + " semitonos)" + recortado
+      + (S.tessFull.hi - S.tessFull.lo > 30
+        ? "  ·  Es muy amplio: probablemente incluye falsete o notas forzadas. Vuelve a medir sin forzar, o fíjalo a mano."
+        : "");
     buildPool();
     guardar();
   }
@@ -1320,6 +1323,18 @@
 
   function seqTone(m, ms){ sound(m, ms); }
 
+  // En los vocalises de ida y vuelta, que se vea en qué mitad vas.
+  function tramo(){
+    if(S.play !== "vocaliz" || !PATRONES_IV[S.patron]) return "";
+    return S.vuelta ? "Bajada" : "Subida";
+  }
+  function badgeSeq(){
+    const t = tramo();
+    if(S.play === "vocaliz")
+      return (t ? (t === "Subida" ? "Subida (1 de 2) · después la bajada · " : "Bajada (2 de 2) · ") : "") + CLEF[S.seqClef].label;
+    return CLEF[S.seqClef].label + livesText();
+  }
+
   function livesText(){ return " · " + "\u2665".repeat(S.lives) + "\u2661".repeat(3-S.lives); }
 
   function arcadeNewRound(){
@@ -1348,7 +1363,7 @@
     clearTimers();
     S.mode = "arcadePlay"; S.playI = -1; S.progress = 0; S.wrongMs = 0;
     $("noteName").innerHTML = "";
-    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+    $("badge").textContent = badgeSeq();
     $("skipBtn").textContent = "Otra ronda";
     $("toneBtn").textContent = "Repetir";
     $("arrow").className = "arrow"; $("arrow").textContent = "\u266A";
@@ -1356,7 +1371,9 @@
     drawSequence({playIndex:-1});
     if(S.running) bordonPulso();
     const memoria = S.memEtapa === 2;   // solo suena la primera: el resto, de memoria
-    $("msgMain").textContent = memoria ? "De memoria: escucha la primera" : "Escucha la secuencia";
+    const t = tramo();
+    $("msgMain").textContent = (memoria ? "De memoria: escucha la primera" : t ? "Escucha la " + t.toLowerCase() : "Escucha la secuencia")
+      + (memoria && t ? " de la " + t.toLowerCase() : "");
     $("msgSub").textContent = memoria ? "Después cantas el patrón completo sin oírlo"
       : S.seq.length + " notas · después las cantas en orden";
     const DUR = 620, HUECO = 140, cuantas = memoria ? 1 : S.seq.length;
@@ -1401,7 +1418,7 @@
     $("hold").style.width = Math.min(100, S.progress/S.holdMs*100).toFixed(0)+"%";
     drawSequence({});
     say(f, m, cents, tuned);
-    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+    $("badge").textContent = badgeSeq();
 
     if(S.progress >= S.holdMs){
       if(navigator.vibrate) navigator.vibrate(25);
@@ -1447,7 +1464,7 @@
     S.rondaLimpia = false;
     S.wrongMs = 0; S.progress = 0; hist.length = 0; resetNota(); S.atq = null;
     if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
-    $("badge").textContent = CLEF[S.seqClef].label + livesText();
+    $("badge").textContent = badgeSeq();
     $("hold").style.width = "0%";
     if(navigator.vibrate) navigator.vibrate(180);
     if(S.lives > 0){
@@ -1735,11 +1752,16 @@
       // Empieza en la zona baja-media de tu rango (no en el fondo), así hay
       // espacio para transponer y la primera ronda no sale ahogada. Si el
       // patrón no cabe entero en tu zona, se centra.
-      const margen = Math.max(0, Math.round((maxIni - minIni)*0.3));
+      // La nota más grave del patrón se ubica dentro de tu rango repartiendo el
+      // espacio que sobra 40 % abajo y 60 % arriba. Un rango medido muy amplio
+      // (con falsete o notas rascadas) cuenta solo sus dos octavas centrales.
+      const rLo = T ? T.lo : 48, rHi = T ? T.hi : 72;
+      const ancho = Math.min(rHi - rLo, 24), zLo = (rLo + rHi)/2 - ancho/2;
+      const grave = Math.round(zLo + Math.max(0, ancho - (hi - lo))*0.4);
       if(S.patron === "escalera") S.exStart = minIni;
       else if(S.patron === "escaleraB") S.exStart = maxIni;
       else if(maxIni < minIni) S.exStart = Math.round((minIni + maxIni)/2);
-      else S.exStart = S.exDir < 0 ? maxIni - margen : minIni + margen;
+      else S.exStart = Math.max(minIni, Math.min(maxIni, grave - lo));
     }
     if(diat){
       // la tonalidad sigue al ejercicio, para que grados y bordón concuerden
@@ -1771,7 +1793,7 @@
       acordeRef(S.exStart);
       S.mode = "arcadeDone";
       drawSequence({playIndex:-1});
-      $("badge").textContent = CLEF[S.seqClef].label;
+      $("badge").textContent = badgeSeq();
       $("msgMain").textContent = (PATRONES_IV[S.patron] && S.vuelta)
         ? "Acorde · ahora el regreso" : "Acorde de referencia";
       $("msgSub").textContent = "Sitúate en " + etiqueta(S.exStart) + " y espera el patrón.";
@@ -2202,7 +2224,7 @@
       B_AIRE, B_EE, B_AMBULANCIA, B_LARGA,
       bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 4, silabasDe("terceras5") + "."),
       bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 4,
-        "sube " + silabasDe("terceras") + " y baja " + silabasDe("tercerasB") + ".")
+        "son dos renglones. Primero la SUBIDA: " + silabasDe("terceras") + ". Al terminarla aparece la BAJADA: " + silabasDe("tercerasB") + ". Arriba a la izquierda dice en cuál vas.")
     ];
   }
 
