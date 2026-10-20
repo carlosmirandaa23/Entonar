@@ -106,6 +106,10 @@
   .rutInfo ol{margin:8px 0;padding-left:20px;font-size:14px;line-height:1.5}
   .rutInfo li{margin:5px 0}
   .rutInfo .meta{color:var(--text)}
+  .clase{margin:0 0 14px;padding:10px 12px;border-left:3px solid var(--gold);background:rgba(201,162,39,.08);border-radius:0 6px 6px 0}
+  .clase b{font-size:12px;color:var(--gold);letter-spacing:.3px}
+  .clase ul{margin:4px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45}
+  textarea{width:100%;margin-top:8px;background:var(--ink-2);color:var(--text);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;font:inherit;font-size:14px;resize:vertical}
   .resumen{margin-top:16px;border:1px solid var(--gold);border-radius:8px;padding:14px}
   .resumen h3{font-family:Georgia,serif;font-weight:400;font-size:19px;margin:0 0 4px}
   .resumen .rsSub{color:var(--muted);font-size:12px;margin:0 0 10px}
@@ -138,6 +142,7 @@
       <div class="dias" id="hoyDias" aria-label="Últimos 7 días"></div>
     </div>
     <ol class="hoyLista" id="hoyLista"></ol>
+    <div class="clase" id="hoyClase" hidden></div>
     <button class="act primary" id="rutBtn">Empezar rutina · 15 min</button>
     <button class="mini" id="verResumen" hidden style="margin-top:10px;width:100%">Ver el último resumen</button>
   </section>
@@ -196,6 +201,7 @@
       <button type="button" class="tb" data-t="lectura">Lectura</button>
       <button type="button" class="tb" data-t="sonido">Sonido</button>
       <button type="button" class="tb" data-t="progreso">Progreso</button>
+      <button type="button" class="tb" data-t="clase">Clase</button>
     </div>
     <div class="tabp on" id="tp-voz">
       <div class="row">
@@ -284,12 +290,21 @@
         <option value="terceras">Terceras ↑ (1-3-2-4, 3-5-4-6…)</option>
         <option value="tercerasB">Terceras ↓ (8-6-7-5…)</option>
         <option value="tercerasIV">Terceras ↑↓ (sube y regresa)</option>
+        <option value="terceras5">Terceras en una quinta (1-3-2-4-3-5-4-2-1)</option>
         <option value="esc5" selected>5 notas: sube y baja</option>
         <option value="desc5">5 notas bajando</option>
         <option value="arp">Arpegio 1-3-5-3-1</option>
         <option value="arp8">Arpegio a la octava</option>
         <option value="q51">Quinta: 5-1</option>
         <option value="oct">Octava: 1-8-1</option>
+        </select>
+        </div>
+      <div class="row">
+        <div><label for="selLetra">Sílabas bajo las notas</label><small>Do móvil en los vocalises. «De memoria» las oculta después de dos rondas.</small></div>
+        <select id="selLetra">
+        <option value="no">No</option>
+        <option value="si">Sí</option>
+        <option value="memoria">De memoria</option>
         </select>
         </div>
       <div class="row">
@@ -402,6 +417,13 @@
         <div class="sw" id="swAuto" role="switch" aria-checked="false" tabindex="0"><i></i></div>
         </div>
     </div>
+    <div class="tabp" id="tp-clase">
+      <div class="row" style="display:block">
+        <label for="notasClase">Indicaciones de tu maestra</label>
+        <small style="max-width:none">Una por línea. Aparecen en la tarjeta de la rutina para tenerlas presentes.</small>
+        <textarea id="notasClase" rows="5"></textarea>
+        </div>
+    </div>
     <div class="tabp" id="tp-progreso">
       <div class="row">
         <div><label for="selOrden">Ordenar por</label></div>
@@ -477,14 +499,14 @@
     echo:0, echoAt:0, patron:"esc5", exDir:1, exStart:0, acorde:"si", vuelta:false, seq:[], seqI:0, seqClef:"treble", playI:-1,
     lives:3, round:0, wrongMs:0, timers:[],
     progress:0, done:0, streak:0, bestStreak:0,
-    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null, nBuf:[], atq:null
+    devSum:0, devN:0, nSum:0, nN:0, lastTs:0, lastGoodTs:0, locked:false, guia:null, nBuf:[], atq:null, letra:"no", letraRondas:0
   };
 
   // Rutina diaria: qué bloque toca, cuánto falta y los ajustes del usuario
   // guardados aparte mientras la rutina impone los suyos.
   const R = {
     activa:false, pendiente:false, orden:[], i:0, resta:0, enBloque:false, backup:null, ses:null,
-    datos:{dias:[], hoy:null, soplo:{}, sirena:{}, hist:{}, resumen:null}
+    datos:{dias:[], hoy:null, sirena:{}, hist:{}, resumen:null, notas:null}
   };
 
   const $ = id => document.getElementById(id);
@@ -784,7 +806,7 @@
   }
 
   /* ---------------- audio ---------------- */
-  let ctx=null, analyser=null, buf=null, stream=null, raf=0;
+  let ctx=null, analyser=null, buf=null, stream=null, raf=0, analyserRaw=null, bufRaw=null;
   const hist = [];
   let mBuf = [];
 
@@ -805,6 +827,17 @@
     analyser = ctx.createAnalyser(); analyser.fftSize = 4096;
     buf = new Float32Array(analyser.fftSize);
     src.connect(hp); hp.connect(lp); lp.connect(analyser);
+    analyserRaw = ctx.createAnalyser(); analyserRaw.fftSize = 2048;
+    bufRaw = new Float32Array(analyserRaw.fftSize);
+    src.connect(analyserRaw);
+  }
+
+  function rmsCrudo(){
+    if(!analyserRaw) return 0;
+    analyserRaw.getFloatTimeDomainData(bufRaw);
+    let e = 0;
+    for(let i=0;i<bufRaw.length;i++) e += bufRaw[i]*bufRaw[i];
+    return Math.sqrt(e/bufRaw.length);
   }
 
   let dec = null;
@@ -1092,6 +1125,11 @@
         s += '<line x1="'+(x+6.6)+'" y1="'+(y-1)+'" x2="'+(x+6.6)+'" y2="'+(y-32)+'" stroke="'+col+'" stroke-width="1.8"/>';
       else
         s += '<line x1="'+(x-6.6)+'" y1="'+(y+1)+'" x2="'+(x-6.6)+'" y2="'+(y+32)+'" stroke="'+col+'" stroke-width="1.8"/>';
+      if(it.sil && S.letra !== "no"){
+        // modo memoria: después de dos rondas, solo aparecen las que ya cantaste
+        const ver = S.letra === "si" || S.letraRondas < 2 || hecha;
+        s += '<text x="'+x+'" y="194" font-size="13" text-anchor="middle" font-family="Georgia,serif" fill="'+(hecha ? "#2F8F72" : actual ? "#B08A16" : "#6A6553")+'">'+(ver ? it.sil : "?")+'</text>';
+      }
       const rx = n > 9 ? 6.2 : 7.2, ry = n > 9 ? 4.7 : 5.4;
       s += '<ellipse cx="'+x+'" cy="'+y+'" rx="'+rx+'" ry="'+ry+'" fill="'+col+'" transform="rotate(-20 '+x+' '+y+')"/>';
       if(actual){
@@ -1378,6 +1416,7 @@
     clearTimers();
     S.mode = "arcadeDone";
     S.round++; S.streak++;
+    if(S.letra === "memoria") S.letraRondas++;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     $("stDone").textContent = S.round;
     $("stStreak").textContent = S.streak;
@@ -1472,7 +1511,7 @@
     S.lastTs = ts;
 
     const mudo = ts < S.muteUntil;
-    let d = {f:-1};
+    let d = {f:-1, mudo:mudo};
     if(!mudo){
       analyser.getFloatTimeDomainData(buf);
       d = detectPitch(buf, ctx.sampleRate);
@@ -1623,7 +1662,9 @@
   const MAYOR = [0,2,4,5,7,9,11];
   const grado2semi = g => { const o = Math.floor(g/7); return o*12 + MAYOR[g - o*7]; };
   const PATRONES_G = {
-    terceras:  [0,2,1,3,2,4,3,5,4,6,5,7,6,8,7],   // 1-3-2-4, 3-5-4-6, 5-7-6-8, 7-9-8
+    terceras:  [0,2,1,3,2,4,3,5,4,6,5,7,6,8,7],
+    // Terceras dentro de una quinta: 1-3-2-4-3-5-4-2-1. Cabe en cualquier voz.
+    terceras5: [0,2,1,3,2,4,3,1,0],   // 1-3-2-4, 3-5-4-6, 5-7-6-8, 7-9-8
     // Espejo exacto de la anterior (índice i -> 7-i): 15 notas también, y el
     // último grupo se pasa por debajo de la tónica igual que el de arriba se
     // pasa por encima de la octava.
@@ -1675,17 +1716,14 @@
     const minIni = (S.tess ? S.tess.lo : 48) - lo;
     const maxIni = (S.tess ? S.tess.hi : 72) - hi;
     if(!S.exStart){
+      // Empieza en la zona baja-media de tu rango (no en el fondo), así hay
+      // espacio para transponer y la primera ronda no sale ahogada. Si el
+      // patrón no cabe entero en tu zona, se centra.
+      const margen = Math.max(0, Math.round((maxIni - minIni)*0.3));
       if(S.patron === "escalera") S.exStart = minIni;
       else if(S.patron === "escaleraB") S.exStart = maxIni;
-      else S.exStart = S.exDir < 0 ? maxIni : minIni;
-      // los diatónicos arrancan en una tónica de verdad, no en cualquier nota
-      if(diat){
-        const base = S.exDir < 0 ? maxIni : minIni;
-        let t = S.key + 12*Math.round((base - S.key)/12);
-        while(t > maxIni) t -= 12;
-        while(t < minIni) t += 12;
-        if(t >= minIni && t <= maxIni) S.exStart = t;
-      }
+      else if(maxIni < minIni) S.exStart = Math.round((minIni + maxIni)/2);
+      else S.exStart = S.exDir < 0 ? maxIni - margen : minIni + margen;
     }
     if(diat){
       // la tonalidad sigue al ejercicio, para que grados y bordón concuerden
@@ -1695,7 +1733,8 @@
         const sk = $("selKey"); if(sk) sk.value = String(pc);
       }
     }
-    if(S.exStart > maxIni || S.exStart < minIni){
+    if(maxIni < minIni) S.exStart = Math.round((minIni + maxIni)/2);   // no cabe: siempre centrado
+    if(maxIni >= minIni && (S.exStart > maxIni || S.exStart < minIni)){
       if(S.patron === "escalera" || S.patron === "escaleraB"){
         S.patron = S.patron === "escalera" ? "escaleraB" : "escalera";
         const q = PATRONES[S.patron];
@@ -1710,7 +1749,7 @@
     }
     const cl = claveDe(S.exStart + Math.round((lo+hi)/2));
     S.seqClef = cl;
-    S.seq = p.map(off => itemDeMidi(S.exStart + off, cl));
+    S.seq = p.map(off => Object.assign(itemDeMidi(S.exStart + off, cl), {sil:MOVIL[((off % 12) + 12) % 12]}));
     S.lives = 3;
     if(S.acorde === "si" && ctx){
       acordeRef(S.exStart);
@@ -1783,7 +1822,6 @@
     const cents = (m - S.anchor)*100;
     const abs = Math.abs(cents);
     S.anclaLog.push(Math.round(cents));
-    if(R.ses && R.enBloque) R.ses.ancla.push(abs);
     if(S.anclaLog.length > 60) S.anclaLog.shift();
     const medias = S.anclaLog.map(Math.abs);
     const media = medias.reduce((a,b)=>a+b,0)/medias.length;
@@ -1817,7 +1855,7 @@
         echo: S0.echo, patron: S0.patron, exDir: S0.exDir, acorde: S0.acorde, vuelta: S0.vuelta,
         clefMode: S0.clefMode, extra: S0.extra, acc: S0.acc,
         tol: S0.tol, holdMs: S0.holdMs, scanStep: S0.scanStep,
-        showName: S0.showName, autoTone: S0.autoTone
+        showName: S0.showName, autoTone: S0.autoTone, letra: S0.letra
       }));
     }catch(e){ /* modo incógnito o sin espacio: seguimos sin guardar */ }
   }
@@ -1827,7 +1865,7 @@
     try{ d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); }catch(e){ return; }
     if(!d) return;
     S.stats = d.stats || {};
-    ["trim","play","timbre","focus","clefMode","acc","tessLabel","label","drone","acorde","orden"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
+    ["trim","play","timbre","focus","clefMode","acc","tessLabel","label","drone","acorde","orden","letra"].forEach(k=>{ if(d[k]) S[k]=d[k]; });
     if(typeof d.key === "number") S.key = d.key;
     if(typeof d.anchor === "number") S.anchor = d.anchor;
     if(Array.isArray(d.anclaLog)) S.anclaLog = d.anclaLog;
@@ -1840,7 +1878,7 @@
     set("selAcc",S.acc); set("selTol",S.tol); set("selHold",S.holdMs);
     set("selStep",S.scanStep); set("selTrim",S.trim);
     set("selLabel",S.label); set("selKey",S.key); set("selDrone",S.drone); set("selAnchor",S.anchor);
-    set("selOrden",S.orden); set("selEcho",S.echo); set("selPatron",S.patron); set("selDir",S.exDir); set("selAcorde",S.acorde);
+    set("selOrden",S.orden); set("selEcho",S.echo); set("selPatron",S.patron); set("selDir",S.exDir); set("selAcorde",S.acorde); set("selLetra",S.letra);
     [["swName","showName"],["swAuto","autoTone"]].forEach(pair=>{
       const el=$(pair[0]); if(!el) return;
       el.classList.toggle("on", S[pair[1]]);
@@ -1964,112 +2002,90 @@
   }
 
   /* ---------------- rutina diaria ---------------- */
-  // Unos 15 minutos con el orden clásico de una sesión de técnica: aire,
-  // calentamiento semiocluido, registro completo, sostenido, agilidad, oído y
-  // enfriamiento. Los bloques de escalas y de oído rotan día con día, y la
-  // exigencia sube cada semana de rutinas completadas.
+  // Rutina centrada en el aire: cómo se toma, cuánto dura, cuánto se escapa por
+  // las cuerdas y qué tan quieta queda la nota al sostenerla. Un solo
+  // calentamiento que cambia cada día; lo demás son ejercicios de trabajo.
   const LS_RUT = "entonar:rutina:v1";
-  const CFG_KEYS = ["play","patron","exDir","tol","holdMs","echo","autoTone","arcadeLen","acorde"];
-  const TOL_NIVEL = [45, 40, 35, 30], HOLD_LARGAS = [2000, 2500, 3000, 4000], ARCADE_NIVEL = [3, 4, 4, 5];
-  const VOCALES = ["«a»", "«o»", "«u»", "«e»", "«i»"];
-  const UMBRAL_SONIDO = 0.012;
+  const CFG_KEYS = ["play","patron","exDir","tol","holdMs","echo","autoTone","arcadeLen","acorde","letra"];
+  const NOTAS_CLASE = "Cuidar la toma de aire: mucho aire, hacerlo elegante\nAmbulancia con «i»\nTerceras: aprenderse las notas";
 
-  const B_RESPIRA = {
-    id:"respira", titulo:"Respiración y soplo", min:2, tipo:"soplo",
-    porque:"El aire es el motor de la voz. Soltarlo parejo y sin prisa hace que todo lo demás salga más fácil y más afinado.",
-    pasos:[
-      "De pie, pies al ancho de los hombros, rodillas sueltas, hombros abajo y cuello largo.",
-      "Inhala por la nariz mientras la app cuenta 4: que se inflen la panza y las costillas hacia los lados, no el pecho ni los hombros.",
-      "Suelta el aire en un zumbido «vvvv» (dientes de arriba apoyados en el labio de abajo), parejo y suave, lo más largo que puedas sin apretar.",
-      "Cuando se acabe el aire no te exprimas: relaja la panza, descansa y vuelve a inhalar."
-    ]
-  };
-  const B_TRINOS = {
-    id:"trinos", titulo:"Trinos de labios (o popote)", min:3, tipo:"app",
-    porque:"Es un ejercicio de tracto vocal semiocluido: al cerrar parcialmente la boca, la presión que regresa amortigua el choque de las cuerdas. Calienta sin cansar y es de lo más recomendado por fonoaudiólogos.",
-    pasos:[
-      "Labios juntos y sueltos; sopla para que vibren como «brrrr» de motor, y añade voz.",
-      "Si los labios no aguantan, empuja suavemente las mejillas hacia la nariz con dos dedos.",
-      "Si no te sale el trino, canta «uuu» a través de un popote delgado: funciona igual.",
-      "Escucha el acorde y sigue la escala de 5 notas que suena; cada ronda sube medio tono. Volumen bajo, cero esfuerzo."
-    ],
-    cfg:{play:"vocaliz", patron:"esc5", exDir:1, tol:50, holdMs:500, acorde:"si"}
-  };
-  const B_SIRENA = {
-    id:"sirena", titulo:"Sirenas", min:1.5, tipo:"sirena",
-    porque:"Deslizarte por todo tu rango une la voz de pecho con la de cabeza y va borrando el «quiebre» entre las dos.",
-    pasos:[
-      "Usa «ng» (como el final de «tengo», con la boca entreabierta) o una «uuu» suave.",
-      "Desliza de tu nota más grave a la más aguda y de regreso, como sirena de ambulancia, sin cortar el sonido.",
-      "Pasa por la zona del quiebre despacio y con poco volumen; arriba no empujes, deja que se adelgace.",
-      "Haz varias, cada una un poquito más amplia que la anterior."
-    ]
-  };
-  const B_LARGAS = {
-    id:"largas", titulo:"Notas largas estables", min:2, tipo:"app",
-    porque:"Sostener una nota quieta entrena el apoyo y la afinación fina, la base de cantar entonado.",
-    pasos:[
-      "Escucha la nota de referencia y cántala en «aaa» o «ooo», mandíbula suelta.",
-      "Mantén el sonido quieto: mismo volumen, misma altura, garganta relajada.",
-      "Si el indicador dice «sube» o «baja», corrige despacio, no de golpe.",
-      "Respira entre nota y nota. Si una no sale, toca «Saltar»: la app la repetirá más adelante."
-    ]
-  };
-  const B_CALMA = {
-    id:"calma", titulo:"Enfriamiento", min:1, tipo:"calma",
-    porque:"Bajar la voz con suavidad la deja relajada después del trabajo, como estirar al terminar de correr.",
-    pasos:[
-      "Boca cerrada, zumba un «mmm» suave, como quien dice «mmm, qué rico».",
-      "Desliza desde una nota media hacia abajo, despacito, varias veces.",
-      "Busca sentir cosquillas en labios y nariz: ahí debe vibrar.",
-      "Termina con un bostezo-suspiro y toma agua."
-    ]
-  };
-
-  const ESCALAS = [
-    {titulo:"Arpegios 1-3-5-3-1", patron:"arp",
-     porque:"Los saltos del arpegio te obligan a «apuntar» a cada nota en vez de resbalar hacia ella.",
-     tip:"Imagina cada nota antes de cantarla; la de arriba, ligera y sin empujar."},
-    {titulo:"Terceras ida y vuelta", patron:"tercerasIV",
-     porque:"Agilidad: mover la voz rápido y limpio entre notas cercanas, como en los adornos de una canción.",
-     tip:"Notas cortas y unidas (legato), sin «aspirar» entre una y otra."},
-    {titulo:"Escalera tono/semitono", patron:"escaleraIV",
-     porque:"Tono arriba, semitono abajo: cada nota llega desde un lado distinto, así afinas intervalos pequeños con precisión.",
-     tip:"El semitono es más chico de lo que parece: no te pases al bajar."},
-    {titulo:"Arpegio a la octava", patron:"arp8",
-     porque:"Llevar el arpegio hasta la octava estira tu rango poco a poco y conecta grave con agudo.",
-     tip:"Al subir abre un poco más la boca hacia abajo (no hacia los lados) y no levantes la barbilla."},
-    {titulo:"Saltos de octava", patron:"oct",
-     porque:"El salto de octava cruza el cambio de registro: aprendes a llegar arriba sin subir la laringe ni gritar.",
-     tip:"Piensa la nota de arriba «encima» de la de abajo, sin cambiar la forma de la boca."}
-  ];
-
-  const OIDO = [
-    {titulo:"Eco: escucha, guarda y canta", cfg:{play:"read", echo:3000, autoTone:false, holdMs:1000},
-     porque:"Retener la nota unos segundos entrena el oído interno: cantar afinado empieza por imaginar bien la nota.",
+  const CALENTAMIENTOS = [
+    {titulo:"Calentamiento: trinos de labios", patron:"esc5",
      pasos:[
-       "Suena una nota y luego hay silencio.",
-       "Durante el silencio, cántala «por dentro», sin emitir sonido.",
-       "Cuando diga «Ahora canta», cántala y sostenla hasta que avance.",
-       "Si fallas no pasa nada: la app insiste más en las notas que te cuestan."
+       "Labios juntos y sueltos; sopla para que vibren como «brrrr» de motor, y añade voz.",
+       "Si los labios no aguantan, empuja suavemente las mejillas hacia la nariz con dos dedos.",
+       "Sigue la escala de 5 notas que suena; cada ronda sube medio tono. Volumen bajo, cero esfuerzo."
      ]},
-    {titulo:"Memoria de melodías", cfg:{play:"arcade"},
-     porque:"Repetir melodías cortas de oído es justo lo que haces al aprender una canción.",
+    {titulo:"Calentamiento: popote", patron:"esc5",
      pasos:[
-       "Escucha la secuencia completa sin cantar.",
-       "Repítela en orden, sosteniendo cada nota hasta que avance.",
-       "Tienes 3 vidas por ronda; «Repetir» la vuelve a tocar.",
-       "Canta en «la» o «na» para que cada nota tenga un ataque claro."
+       "Canta «uuu» a través de un popote delgado, con los labios bien cerrados alrededor.",
+       "Todo el aire debe salir por el popote: si se escapa por la nariz o por los lados, ciérralo mejor.",
+       "Sigue la escala que suena. Sentirás presión en la boca: esa presión es la que ayuda a las cuerdas a cerrar."
      ]},
-    {titulo:"Nota ancla (memoria de altura)", cfg:{play:"ancla"},
-     porque:"Memorizar una nota de referencia te da un punto fijo para orientarte sin piano.",
+    {titulo:"Calentamiento: zumbido «mmm»", patron:"arp",
      pasos:[
-       "Canta la nota ancla de memoria, sin escucharla antes.",
-       "Sostenla; al soltar te dice qué tan cerca quedaste.",
-       "Luego suena la verdadera: escúchala bien y guárdala.",
-       "Puedes cambiar la nota ancla en Ajustes → Práctica."
+       "Boca cerrada, dientes separados, lengua suelta; zumba «mmm» como quien dice «mmm, qué rico».",
+       "Busca cosquillas en labios y nariz: si las sientes, el sonido está bien colocado.",
+       "Sigue el arpegio que suena, suave y unido, sin empujar las notas de arriba."
+     ]},
+    {titulo:"Calentamiento: «ng» deslizado", patron:"desc5",
+     pasos:[
+       "Di «ng» como el final de «tengo» y quédate ahí: la parte de atrás de la lengua toca el paladar.",
+       "Con la boca entreabierta, canta las 5 notas bajando, unidas como un deslizamiento.",
+       "Debe sentirse fácil y vibrar en la nariz; si aprieta la garganta, baja el volumen."
      ]}
   ];
+
+  const B_AIRE = {
+    id:"aire", titulo:"Toma de aire elegante", min:3, tipo:"aire",
+    porque:"Indicación de tu maestra: mucho aire, pero elegante. Una toma silenciosa y baja llena más y deja la garganta abierta; soltarlo en «sss» parejo te enseña a gastarlo poco a poco.",
+    pasos:[
+      "«Saca el aire»: suelta todo sin forzar.",
+      "«Inhala en silencio»: por la nariz o la boca, como al empezar un bostezo. Se abren las costillas a los lados y la panza; los hombros no se mueven. Si se oye un «jjjj», la garganta está cerrada.",
+      "«Sostén»: unos segundos con las costillas abiertas, sin cerrar la garganta (no aguantes como bajo el agua).",
+      "«Suelta en sss»: una «s» fina y pareja, lo más larga que puedas sin apretar. La app la cronometra y avisa si se oyó tu toma de aire."
+    ]
+  };
+  const B_EE = {
+    id:"ee", titulo:"Prueba del aire: «e» en secreto / «e» con voz", min:2, tipo:"ee",
+    porque:"Mide el escape de aire. En secreto (susurrando) las cuerdas no cierran y el aire solo depende de tus pulmones; con voz, también depende de qué tan bien cierran. Si la «e» con voz dura mucho menos que la susurrada, se está escapando aire por las cuerdas.",
+    pasos:[
+      "Inhala bien y di una «eeee» EN SECRETO, susurrada pero que se oiga, lo más larga que puedas y pareja.",
+      "Descansa, inhala otra vez y sostén una «eeee» CON VOZ, a volumen normal, lo más larga que puedas.",
+      "La app compara las dos duraciones. Cuanto más parecidas, mejor cierran tus cuerdas.",
+      "Mismo esfuerzo en las dos: no te guardes aire en ninguna."
+    ]
+  };
+  const B_AMBULANCIA = {
+    id:"ambulancia", titulo:"Ambulancia con «i»", min:2, tipo:"sirena",
+    porque:"Indicación de tu maestra. La «i» acerca las cuerdas y deja escapar menos aire que la «a»; deslizarla de grave a agudo une los registros sin que se rompa la voz.",
+    pasos:[
+      "Sonríe un poquito y canta «iiii» con la lengua apoyada detrás de los dientes de abajo.",
+      "Sube de tu nota más grave a la más aguda y regresa, como sirena de ambulancia, sin cortar el sonido.",
+      "Por la zona donde se rompe la voz pasa despacio y con menos volumen; arriba deja que se adelgace.",
+      "Que suene limpia: si se oye «soplada», junta un poco más (piensa en una «i» brillante, casi metálica)."
+    ]
+  };
+  const B_LARGA = {
+    id:"larga", titulo:"Nota larga en un solo aliento", min:3.5, tipo:"larga",
+    porque:"Trabaja los dos puntos que más te fallan: que no se escape aire y que la nota no se mueva. La app mide cuánto duras, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y qué tan limpio (sin aire) suena.",
+    pasos:[
+      "Escucha la nota de referencia.",
+      "Toma aire en silencio (elegante) mientras la app cuenta.",
+      "Canta la nota en la vocal que pide, a volumen cómodo, y sostenla hasta que se acabe el aire. No la empujes al final: cuando ya no da, suelta.",
+      "Imagina la nota como una línea recta y el aire saliendo poquito a poquito. Mira el aro: se llena hacia tu meta."
+    ]
+  };
+  const B_TERCERAS = {
+    id:"terceras", tipo:"app", min:2.5,
+    porque:"Indicación de tu maestra: aprenderte las notas de las terceras. Bajo cada nota ves su sílaba; después de dos rondas se ocultan y aparecen solo cuando las cantas bien.",
+    pasos:[
+      "Escucha el acorde y el patrón completo.",
+      "Cántalo DICIENDO el nombre de cada nota (do móvil: la primera siempre es «do», aunque la tonalidad suba).",
+      "Desde la tercera ronda las sílabas se ocultan: intenta saberlas de memoria.",
+      "Si llega muy agudo o muy grave, toca «Otra ronda»: nunca fuerces."
+    ]
+  };
 
   function fechaStr(d){
     d = d || new Date();
@@ -2082,10 +2098,10 @@
       if(!d) return;
       R.datos.dias = Array.isArray(d.dias) ? d.dias : [];
       R.datos.hoy = d.hoy || null;
-      R.datos.soplo = d.soplo || {};
       R.datos.sirena = d.sirena || {};
       R.datos.hist = d.hist || {};
       R.datos.resumen = d.resumen || null;
+      if(typeof d.notas === "string") R.datos.notas = d.notas;
     }catch(e){}
   }
   function hechosHoy(){ const h = R.datos.hoy; return h && h.fecha === fechaStr() ? h.hechos : []; }
@@ -2103,38 +2119,51 @@
     const h = fechaStr();
     return Object.keys(tabla).reduce((m,k)=> k===h ? m : Math.max(m, tabla[k]), 0);
   }
+  // Mejor valor de una métrica en los últimos 7 días anteriores.
+  function mejorReciente(k){
+    const h = fechaStr();
+    return Object.keys(R.datos.hist).filter(d=>d !== h).sort().slice(-7)
+      .reduce((m,d)=> typeof R.datos.hist[d][k] === "number" ? Math.max(m, R.datos.hist[d][k]) : m, 0);
+  }
   const fmtMin = m => (m % 1 ? Math.floor(m) + "½" : m) + " min";
   function fmtReloj(ms){
     const s = Math.max(0, Math.ceil(ms/1000));
     return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
   }
+  const esc = t => String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  function silabasDe(clave){
+    const g = PATRONES_G[clave];
+    const p = g ? g.map(grado2semi) : PATRONES[clave];
+    return p.map(x=>MOVIL[((x % 12) + 12) % 12]).join("-");
+  }
 
   function bloquesDeHoy(){
     const n = diaN(), nv = nivel();
-    const esc = ESCALAS[n % ESCALAS.length], oi = OIDO[n % OIDO.length];
-    const vocal = VOCALES[n % VOCALES.length];
-    const cfgOido = Object.assign({tol:TOL_NIVEL[nv]+5}, oi.cfg, oi.cfg.play==="arcade" ? {arcadeLen:ARCADE_NIVEL[nv]} : {});
+    const cal = CALENTAMIENTOS[n % CALENTAMIENTOS.length];
+    // Terceras dentro de una quinta para aprenderlas; desde la segunda semana
+    // se alterna con la escala completa de terceras (llega a la novena).
+    const patT = nv >= 1 && n % 2 ? "tercerasIV" : "terceras5";
     return [
-      B_RESPIRA, B_TRINOS, B_SIRENA,
-      Object.assign({}, B_LARGAS, {cfg:{play:"read", holdMs:HOLD_LARGAS[nv], tol:TOL_NIVEL[nv], autoTone:true, echo:0}}),
-      {id:"escalas", titulo:esc.titulo, min:3, tipo:"app", porque:esc.porque,
-       pasos:[
-         "Escucha el acorde y el patrón; luego cántalo tú, nota por nota.",
-         "Vocal de hoy: " + vocal + ". Boca relajada, mandíbula suelta, como medio bostezo.",
-         esc.tip,
-         "Cuando llegue muy agudo o muy grave y ya no salga cómodo, toca «Otra ronda»: nunca fuerces."
-       ],
-       cfg:{play:"vocaliz", patron:esc.patron, exDir: n%2 ? -1 : 1, tol:TOL_NIVEL[nv]+5, holdMs:600, acorde:"si"}},
-      {id:"oido", titulo:oi.titulo, min:2.5, tipo:"app", porque:oi.porque, pasos:oi.pasos, cfg:cfgOido},
-      B_CALMA
+      {id:"calent", titulo:cal.titulo, min:2, tipo:"app",
+       porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
+       pasos:cal.pasos,
+       cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
+      B_AIRE, B_EE, B_AMBULANCIA, B_LARGA,
+      Object.assign({}, B_TERCERAS, {
+        titulo: patT === "terceras5" ? "Terceras: apréndete las notas" : "Terceras completas (hasta la 9.ª)",
+        pasos: B_TERCERAS.pasos.concat(["El patrón: " + (patT === "terceras5" ? silabasDe("terceras5")
+          : silabasDe("terceras") + " y de regreso.")]),
+        cfg:{play:"vocaliz", patron:patT, exDir:1, tol:45, holdMs:600, acorde:"si", letra:"memoria"}})
     ];
   }
 
   function pintarHoy(){
     const bl = bloquesDeHoy(), hechos = hechosHoy();
     const completa = R.datos.dias.indexOf(fechaStr()) >= 0, r = racha();
+    const total = bl.reduce((a,b)=>a + b.min, 0);
     $("hoySub").textContent = "Día " + (diaN()+1) + " · nivel " + (nivel()+1)
-      + (r ? " · racha de " + r + (r===1 ? " día" : " días") : " · 15 min, paso a paso");
+      + (r ? " · racha de " + r + (r===1 ? " día" : " días") : " · " + Math.round(total) + " min, paso a paso");
     $("hoyLista").innerHTML = bl.map(b=>
       '<li class="' + (hechos.indexOf(b.id) >= 0 ? "ok" : "") + '"><span>' + b.titulo + '</span><small>' + fmtMin(b.min) + '</small></li>'
     ).join("");
@@ -2146,12 +2175,15 @@
       h += '<span class="' + (dias.has(f) ? "on" : "") + (k===0 ? " hoyD" : "") + '" title="' + f + '">' + INI[d.getDay()] + '</span>';
     }
     $("hoyDias").innerHTML = h;
+    const notas = (R.datos.notas || "").split("\n").map(x=>x.trim()).filter(Boolean);
+    $("hoyClase").hidden = !notas.length;
+    $("hoyClase").innerHTML = "<b>Indicaciones de tu maestra</b><ul>" + notas.map(x=>"<li>" + esc(x) + "</li>").join("") + "</ul>";
     const rs = R.datos.resumen;
     $("verResumen").hidden = !rs;
     if(rs) $("verResumen").textContent = rs.fecha === fechaStr() ? "Ver el resumen de hoy" : "Ver el último resumen";
     const parcial = hechos.length && hechos.length < bl.length;
     $("rutBtn").textContent = parcial ? "Continuar rutina"
-      : completa ? "Repetir rutina" : "Empezar rutina · 15 min";
+      : completa ? "Repetir rutina" : "Empezar rutina · " + Math.round(total) + " min";
   }
 
   async function empezarRutina(){
@@ -2176,18 +2208,28 @@
     $("rutPorque").textContent = b.porque;
     $("rutPasos").innerHTML = b.pasos.map(p=>"<li>" + p + "</li>").join("");
     let meta = "";
-    if(b.id === "respira"){
-      const rec = mejorDe(R.datos.soplo);
-      meta = rec ? "Tu récord: " + rec.toFixed(1) + " s. Súbelo poco a poco, sin apretar." : "La app mide cuánto te dura el aire.";
-    }else if(b.id === "sirena"){
+    const H = R.datos.hist;
+    const ultimo = k => { const d = Object.keys(H).filter(x=>typeof H[x][k] === "number").sort().pop(); return d ? H[d][k] : null; };
+    if(b.id === "aire"){
+      const rec = mejorReciente("sss");
+      meta = rec ? "Tu mejor «sss» reciente: " + rec.toFixed(1) + " s." : "Meta inicial: 15 s de «sss» parejo.";
+    }else if(b.id === "ee"){
+      const u = ultimo("ee");
+      meta = u ? "Tu último cociente: " + u.toFixed(2) + " (cerca de 1 es lo ideal)." : "Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire. Lo más útil es ver cómo baja con los días.";
+    }else if(b.id === "ambulancia"){
       const rec = mejorDe(R.datos.sirena);
       meta = rec ? "Tu sirena más amplia: " + Math.round(rec) + " semitonos." : "La barra muestra cuánto de tu rango recorres.";
-    }else if(b.id === "largas"){
-      meta = "Nivel " + (nivel()+1) + ": sostén " + (b.cfg.holdMs/1000) + " s dentro de ±" + b.cfg.tol + " ¢.";
+    }else if(b.id === "larga"){
+      meta = "Tu meta de hoy: " + metaLarga() + " s por nota, sin que se mueva.";
     }
     $("rutMeta").textContent = meta;
     $("rutInfo").open = true;
     pintarProgreso();
+  }
+
+  function metaLarga(){
+    const rec = mejorReciente("larga");
+    return rec ? Math.max(8, Math.min(30, Math.round(rec*1.1))) : 10;
   }
 
   function pintarProgreso(){
@@ -2227,16 +2269,17 @@
     $("rutInfo").open = window.innerHeight > 760;   // en el teléfono, que no tape el pentagrama
     if(b.tipo === "app"){
       Object.assign(S, R.backup, b.cfg);
-      S.exStart = 0; S.vuelta = false; S.lives = 3;
+      S.exStart = 0; S.vuelta = false; S.lives = 3; S.letraRondas = 0;
       startPlaying();
       return;
     }
     S.mode = "guia";
-    S.guia = {tipo:b.tipo, fase:"inicio", t0:0, ini:0, ult:0, best:0, lo:null, hi:null, voz:0};
+    S.guia = {tipo:b.tipo, fase:"inicio", t0:0, ini:0, ult:0, lo:null, hi:null, amb:[], n:0};
     hist.length = 0;
     $("toneBtn").textContent = "Escuchar nota"; $("toneBtn").disabled = true;
     $("skipBtn").textContent = "Siguiente";
     $("badge").textContent = b.titulo;
+    $("noteName").innerHTML = "";
     drawStaff(null, autoClef(), {});
   }
 
@@ -2260,12 +2303,12 @@
   function guiaCerrar(){
     const g = S.guia, f = fechaStr();
     if(!g) return;
-    if(g.tipo === "soplo" && g.fase === "suelta" && g.ini){
-      // se acabó el tiempo a mitad de un soplo: ese también cuenta
+    // se acabó el tiempo a mitad de un «sss»: ese también cuenta
+    if(g.tipo === "aire" && g.fase === "sopla" && g.ini){
       const dur = (g.ult - g.ini)/1000;
-      if(dur >= 1.5){ g.best = Math.max(g.best, dur); if(R.ses) R.ses.soplos.push(dur); }
+      if(dur >= 1.5 && R.ses) R.ses.sss.push(dur);
     }
-    if(g.tipo === "soplo" && g.best) R.datos.soplo[f] = Math.max(R.datos.soplo[f] || 0, g.best);
+    if(g.tipo === "larga" && g.fase === "canta" && g.ini && g.ult - g.ini > 1500) largaResultado(g, g.ult);
     if(g.tipo === "sirena" && g.lo !== null){
       R.datos.sirena[f] = Math.max(R.datos.sirena[f] || 0, g.hi - g.lo);
       if(R.ses) R.ses.sirena = Math.max(R.ses.sirena || 0, g.hi - g.lo);
@@ -2307,7 +2350,7 @@
     }
     const r = racha();
     detener(todos ? "¡Rutina completa!" : "Fin de la rutina",
-      todos ? "Racha de " + r + (r===1 ? " día" : " días") + ". Mañana toca otra variación."
+      todos ? "Racha de " + r + (r===1 ? " día" : " días") + ". Mañana cambia el calentamiento."
             : "Te saltaste algunos ejercicios: «Continuar rutina» los retoma.");
   }
 
@@ -2327,7 +2370,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, ancla:[], soplos:[], sirena:null, quiebres:[]}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[]}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2336,8 +2379,7 @@
   }
   const firmado = c => (c >= 0 ? "+" : "−") + Math.abs(Math.round(c)) + " ¢";
 
-  // Cada nota lograda deja su rastro: desviación con signo, desviación absoluta
-  // y cuánto se movió mientras la sostenías.
+  // Cada nota lograda en los vocalises deja su rastro de afinación.
   function sesNota(midi, buf){
     if(buf.length < 3) return;
     const s = promedio(buf);
@@ -2345,8 +2387,6 @@
     R.ses.notas.push({m:Math.round(midi), s:s, abs:promedio(buf.map(Math.abs)), sd:sd, n:buf.length, b:R.orden[R.i].id});
   }
 
-  // Desde que empiezas a sonar hasta que entras en la tolerancia; y desde qué
-  // lado llegaste.
   function ataqueStep(ts, m, cents, tuned){
     if(!R.ses || !R.enBloque || m === null) return;
     const a = S.atq || (S.atq = {t0:0, listo:false});
@@ -2360,35 +2400,31 @@
     if(N.length){
       M.afin = promedio(N.map(x=>x.abs));
       M.sesgo = promedio(N.map(x=>x.s));
-      const largas = N.filter(x=>x.b === "largas" && x.n >= 10);
-      const base = largas.length >= 3 ? largas : N.filter(x=>x.n >= 8);
-      if(base.length >= 3) M.estab = mediana(base.map(x=>x.sd));
-      const mid = S.tess ? (S.tess.lo + S.tess.hi)/2 : 60;
-      const alto = N.filter(x=>x.m > mid), bajo = N.filter(x=>x.m <= mid);
-      if(alto.length >= 3) M.sesgoAlto = promedio(alto.map(x=>x.s));
-      if(bajo.length >= 3) M.sesgoBajo = promedio(bajo.map(x=>x.s));
-      const por = {};
-      N.forEach(x=>{ (por[x.m] = por[x.m] || []).push(x.abs); });
-      M.peores = Object.keys(por).filter(k=>por[k].length >= 2)
-        .map(k=>({m:Number(k), abs:promedio(por[k])}))
-        .filter(x=>x.abs > 22).sort((a,b)=>b.abs - a.abs).slice(0, 2);
     }
-    const A = X.ataques.filter(a=>a.ms < 6000);
-    if(A.length >= 4) M.ataque = mediana(A.map(a=>a.ms));
-    const F = A.filter(a=>a.fuera);
-    if(F.length >= 4){ M.desdeAbajo = F.filter(a=>a.desde < 0).length / F.length; M.nFuera = F.length; M.nAtaques = A.length; }
-    if(X.soplos.length) M.soplo = Math.max.apply(null, X.soplos);
+    if(X.ee) M.ee = X.ee;
+    if(X.inhala.length){ M.nInh = X.inhala.length; M.ruidosas = X.inhala.filter(Boolean).length; }
+    if(X.sss.length) M.sss = Math.max.apply(null, X.sss);
+    const L = X.largas.filter(x=>x.dur >= 3);
+    if(L.length){
+      M.larga = Math.max.apply(null, L.map(x=>x.dur));
+      M.nLargas = L.length;
+      M.estab = mediana(L.map(x=>x.sd));
+      M.deriva = mediana(L.map(x=>x.deriva));
+      M.cv = mediana(L.map(x=>x.cv));
+      M.claridad = mediana(L.map(x=>x.q));
+    }
     if(X.sirena >= 3) M.sirena = X.sirena;   // menos que eso: casi no hubo sirena
     if(X.quiebres.length >= 3) M.quiebre = mediana(X.quiebres);
-    if(X.ancla.length) M.ancla = promedio(X.ancla);
     return M;
   }
+
+  const METRICAS = ["ee","larga","estab","claridad","sss","sirena"];
 
   // Promedio de los días anteriores (hasta 7) para comparar.
   function previo(){
     const h = fechaStr(), dias = Object.keys(R.datos.hist).filter(k=>k !== h).sort().slice(-7);
     const P = {};
-    ["afin","estab","ataque","soplo","sirena"].forEach(k=>{
+    METRICAS.forEach(k=>{
       const v = dias.map(d=>R.datos.hist[d][k]).filter(x=>typeof x === "number");
       if(v.length) P[k] = promedio(v);
     });
@@ -2399,116 +2435,105 @@
     const M = metricas(), P = previo();
     const bien = [], mal = [];
     const add = (lista, score, txt, tip)=> lista.push({score:score, txt:txt, tip:tip||""});
-    const datosAfin = M.nNotas >= 5;
-    let registro = 0;
 
-    if(datosAfin){
-      if(M.afin <= 15) add(bien, 2, "Afinación precisa: " + Math.round(M.afin) + " ¢ de desviación media.");
-      else if(M.afin > 25) add(mal, M.afin/20, "Afinación general algo suelta: " + Math.round(M.afin) + " ¢ de desviación media.",
-        "Escucha la referencia completa antes de cantar y entra suave; es mejor tardar un poco y llegar justo.");
-      if(M.sesgoAlto !== undefined && M.sesgoAlto <= -12 && (M.sesgoBajo === undefined || M.sesgoAlto - M.sesgoBajo <= -8)){
-        registro = -1;
-        add(mal, -M.sesgoAlto/8, "En la parte aguda de tu rango te quedas bajo (" + firmado(M.sesgoAlto) + ").",
-          "Es lo más común: al subir falta aire, no fuerza. Abre la boca hacia abajo, mantén las costillas abiertas y piensa la nota «más arriba» de lo que crees.");
-      }else if(M.sesgoAlto !== undefined && M.sesgoAlto >= 12){
-        registro = 1;
-        add(mal, M.sesgoAlto/8, "En los agudos te vas alto (" + firmado(M.sesgoAlto) + ").",
-          "Suele ser exceso de presión: baja el volumen y deja que la nota se adelgace en lugar de empujarla.");
+    // 1. Escape de aire
+    if(M.ee){
+      const r = M.ee.ratio, txt = "en secreto " + M.ee.s.toFixed(1) + " s · con voz " + M.ee.v.toFixed(1) + " s";
+      if(r >= 1.4) add(mal, 3.5, "Tu «e» con voz duró mucho menos que la susurrada (cociente " + r.toFixed(2) + "; " + txt + "): se está escapando aire por las cuerdas.",
+        "Busca inicios limpios: canta «mi-mi-mi» cortas y suaves, sin aire antes del sonido, y pasa de «mmm» a «iii» sin cortar. Piensa en un sonido brillante, no soplado. Si sigue arriba de 1.4 varias semanas, coméntalo con tu maestra.");
+      else if(r > 1.2) add(mal, 2, "Un poco de escape de aire: cociente " + r.toFixed(2) + " (" + txt + ").",
+        "Los ejercicios de popote y «mmm» → «iii» ayudan a que las cuerdas cierren mejor. Tu meta: acercarlo a 1.");
+      else add(bien, 2.5, "Buen cierre de cuerdas: cociente " + r.toFixed(2) + " (" + txt + ").");
+    }
+    // 2. Toma de aire
+    if(M.nInh >= 3){
+      if(M.ruidosas/M.nInh >= 0.34) add(mal, 1.5 + M.ruidosas/M.nInh*2, "Se escuchó tu toma de aire en " + M.ruidosas + " de " + M.nInh + " respiraciones.",
+        "Para que sea elegante: abre la garganta como al empezar un bostezo, sin hacer «jjjj». Llena bajo (costillas y panza), hombros quietos, y date un tiempo: una toma apurada siempre suena.");
+      else add(bien, 2, "Tomas de aire silenciosas: " + (M.nInh - M.ruidosas) + " de " + M.nInh + ".");
+    }
+    // 3. Nota larga: duración, estabilidad, deriva, volumen, claridad
+    if(M.larga !== undefined){
+      if(M.larga < 10) add(mal, (12 - M.larga)/2.5, "Tu nota larga más larga duró " + M.larga.toFixed(1) + " s.",
+        "Si el aire se acaba rápido es que sale más del que se convierte en sonido. Canta a volumen medio (no suave y soplado) y gasta el aire poquito a poquito. Meta: 15 s.");
+      else if(M.larga >= 15) add(bien, 1.5, "Buen aliento: sostuviste " + M.larga.toFixed(1) + " s.");
+      if(M.estab > 10) add(mal, M.estab/7, "La nota se mueve mientras la sostienes (±" + Math.round(M.estab) + " ¢).",
+        "Imagina la nota como una línea recta. El aire debe salir parejo, como en el «sss»: sin empujones y sin aflojar. Mantén las costillas abiertas mientras cantas.");
+      else if(M.estab <= 7) add(bien, 2, "Nota muy estable: ±" + Math.round(M.estab) + " ¢.");
+      if(M.deriva <= -12) add(mal, -M.deriva/8, "Al final de la nota se te cae la afinación (" + firmado(M.deriva) + ").",
+        "Es el apoyo que se acaba antes que el aire: termina la nota un poco antes, con las costillas aún abiertas, en vez de exprimir lo último.");
+      else if(M.deriva >= 12) add(mal, M.deriva/8, "Al final de la nota subes (" + firmado(M.deriva) + ").",
+        "Suele ser apretar para que no se acabe: suelta el cuello y deja la nota igual de principio a fin.");
+      if(M.cv > 0.22) add(mal, M.cv*6, "El volumen sube y baja durante la nota (el aire sale a tirones).",
+        "Practica el «sss» parejo y luego canta la nota pensando en ese mismo flujo constante.");
+      if(M.claridad !== undefined){
+        if(M.claridad < 0.86) add(mal, (0.92 - M.claridad)*30, "El sonido sale con aire (claridad aprox. " + Math.round(M.claridad*100) + " %).",
+          "Empieza la nota desde «mmm» y abre a «iii» sin cortar: el zumbido te deja las cuerdas juntas. Una «i» brillante, casi «metálica», deja escapar menos aire que una «a».");
+        else if(M.claridad >= 0.94) add(bien, 1.5, "Sonido limpio, con poco aire (claridad aprox. " + Math.round(M.claridad*100) + " %).");
       }
-      if(M.sesgoBajo !== undefined && Math.abs(M.sesgoBajo) >= 12 && Math.sign(M.sesgoBajo) !== registro){
-        add(mal, Math.abs(M.sesgoBajo)/8, "En los graves te vas " + (M.sesgoBajo < 0 ? "bajo" : "alto") + " (" + firmado(M.sesgoBajo) + ").",
-          M.sesgoBajo < 0 ? "En graves no hundas la laringe ni la barbilla: piensa la nota con brillo, como hablando."
-                          : "En graves relaja: no hace falta apretar para que suenen.");
-        registro = registro || Math.sign(M.sesgoBajo);
-      }
-      if(!registro && Math.abs(M.sesgo) >= 8){
-        add(mal, Math.abs(M.sesgo)/8, (M.sesgo < 0 ? "Tiendes a quedarte un poco bajo" : "Tiendes a irte un poco alto") + " (" + firmado(M.sesgo) + " en promedio).",
-          M.sesgo < 0 ? "Quedarse bajo suele ser falta de apoyo al final de la nota: sostén el aire hasta que termine."
-                      : "Irse alto suele venir de empujar: suelta volumen y tensión del cuello.");
-      }
-      if(M.peores && M.peores.length){
-        add(mal, M.peores[0].abs/25, "Las notas que más te costaron: " + M.peores.map(x=>midiLabel(x.m) + " (" + Math.round(x.abs) + " ¢)").join(", ") + ".",
-          "La práctica libre con «Notas débiles» (Ajustes → Práctica) las repite más seguido.");
-      }
     }
-    if(M.estab !== undefined){
-      if(M.estab <= 7) add(bien, 1.5, "Notas largas muy estables (±" + Math.round(M.estab) + " ¢).");
-      else if(M.estab > 11) add(mal, M.estab/11, "Tus notas sostenidas se mueven (±" + Math.round(M.estab) + " ¢ mientras las aguantas).",
-        "El aire debe salir parejo, como en el soplo «vvvv». Imagina la nota como una línea recta y no subas el volumen a la mitad.");
+    // 4. Soplo controlado
+    if(M.sss !== undefined){
+      const rec = mejorReciente("sss");
+      if(rec && M.sss > rec) add(bien, 2, "Nuevo récord de «sss»: " + M.sss.toFixed(1) + " s.");
+      else if(M.sss < 12) add(mal, (14 - M.sss)/4, "Tu «sss» controlado duró " + M.sss.toFixed(1) + " s.",
+        "Meta: 20 s parejos. Toma el aire bajo y suéltalo con una «s» fina; si la «s» suena fuerte, estás gastando de más.");
     }
-    if(M.ataque !== undefined){
-      if(M.ataque <= 350) add(bien, 1, "Encuentras la nota rápido (" + (M.ataque/1000).toFixed(1) + " s).");
-      else if(M.ataque > 700) add(mal, M.ataque/700, "Tardas en encontrar la nota (≈" + (M.ataque/1000).toFixed(1) + " s).",
-        "Antes de cantar, imagínala en la cabeza un segundo. Luego entra suave, justo en la altura, en vez de buscarla cantando.");
-    }
-    if(M.desdeAbajo !== undefined && M.desdeAbajo >= 0.7){
-      add(mal, 1 + M.desdeAbajo, "Sueles entrar a las notas desde abajo y resbalar hacia ellas (" + Math.round(M.desdeAbajo*100) + " % de las veces que no entraste directo).",
-        "Ese «scoop» se corrige pensando la nota desde arriba. Prueba atacar con una sílaba corta como «la» o «na».");
-    }
-    if(M.fallos >= 3) add(mal, M.fallos/3, "Se escaparon " + M.fallos + " notas o rondas.",
-      "Ve más lento: «Repetir» o «Escuchar nota» las veces que necesites antes de cantar.");
-    else if(datosAfin && M.fallos === 0) add(bien, 1, "Ninguna nota perdida.");
-    if(M.soplo !== undefined){
-      const rec = mejorDe(R.datos.soplo);
-      if(rec && M.soplo > rec) add(bien, 2, "Nuevo récord de soplo: " + M.soplo.toFixed(1) + " s.");
-      else if(M.soplo < 10) add(mal, (12 - M.soplo)/4, "Tu soplo más largo duró " + M.soplo.toFixed(1) + " s.",
-        "Meta: 15–20 s parejos. Inhala bajo (panza y costillas), no por los hombros, y suelta poquito aire.");
-      else if(M.soplo >= 18) add(bien, 1, "Buen control de aire: " + M.soplo.toFixed(1) + " s de soplo.");
-    }
+    // 5. Ambulancia
     if(M.sirena !== undefined){
       const rango = S.tessFull ? S.tessFull.hi - S.tessFull.lo : 24;
-      if(M.sirena < rango*0.7) add(mal, 1.2, "Tus sirenas recorrieron " + Math.round(M.sirena) + " de los " + rango + " semitonos de tu rango.",
-        "Deja que la voz se adelgace arriba con poco volumen; la sirena no tiene que sonar bonita, solo continua.");
-      else add(bien, 1, "Sirenas amplias: " + Math.round(M.sirena) + " semitonos.");
+      if(M.sirena < rango*0.7) add(mal, 1, "Tu ambulancia recorrió " + Math.round(M.sirena) + " de los " + rango + " semitonos de tu rango.",
+        "Deja que la «i» se adelgace arriba con poco volumen; no tiene que sonar bonita, solo continua.");
+      else add(bien, 1, "Ambulancia amplia: " + Math.round(M.sirena) + " semitonos.");
     }
-    if(M.quiebre !== undefined) add(mal, 1.1, "Posible quiebre de voz alrededor de " + midiLabel(M.quiebre) + " (la sirena dio saltos ahí).",
-      "Haz sirenas cortas que crucen esa zona, en «ng» o «u» suave, con menos volumen al pasar. Es normal; se suaviza con práctica.");
-    if(M.ancla !== undefined){
-      if(M.ancla <= 30) add(bien, 1, "Memoria de altura fina: tu nota ancla a " + Math.round(M.ancla) + " ¢.");
-      else if(M.ancla > 60) add(mal, M.ancla/60, "Tu nota ancla quedó lejos (" + (M.ancla >= 100 ? "≈ " + Math.round(M.ancla/100) + " semitonos" : Math.round(M.ancla) + " ¢") + " en promedio).",
-        "Tararéala varias veces al día (por ejemplo, al despertar) y compárala con la app.");
-    }
+    if(M.quiebre !== undefined) add(mal, 1.1, "Posible quiebre de voz alrededor de " + midiLabel(M.quiebre) + " (la ambulancia dio saltos ahí).",
+      "Haz ambulancias cortas que crucen esa zona, en «i» suave, con menos volumen al pasar. Es normal; se suaviza con práctica.");
+    // 6. Afinación: solo si algo anda mal (tu maestra dice que vas bien)
+    if(M.nNotas >= 5 && M.afin > 25) add(mal, M.afin/25, "En las terceras la afinación anduvo suelta (" + Math.round(M.afin) + " ¢ de desviación media).",
+      "Escucha el patrón completo antes de cantar y apóyate en las sílabas.");
+    if(M.fallos >= 3) add(mal, M.fallos/4, "Se escaparon " + M.fallos + " notas en las terceras.",
+      "Repite el patrón diciendo las sílabas sin cantar, y luego cantándolas.");
 
     // Guarda el día para comparar mañana.
     const f = fechaStr(), H = R.datos.hist[f] || {};
-    ["afin","estab","ataque","soplo","sirena"].forEach(k=>{
-      if(M[k] === undefined || (k === "afin" && !datosAfin)) return;
-      H[k] = (k === "soplo" || k === "sirena") ? Math.max(H[k] || 0, M[k]) : M[k];
+    const vals = {ee: M.ee ? M.ee.ratio : undefined, larga:M.larga, estab:M.estab, claridad:M.claridad, sss:M.sss, sirena:M.sirena};
+    METRICAS.forEach(k=>{
+      if(vals[k] === undefined) return;
+      H[k] = (k === "larga" || k === "sss" || k === "sirena") ? Math.max(H[k] || 0, vals[k]) : vals[k];
     });
     R.datos.hist[f] = H;
     const llaves = Object.keys(R.datos.hist).sort();
     while(llaves.length > 120) delete R.datos.hist[llaves.shift()];
 
     const filas = [
-      ["afin", "Desviación media", v=>Math.round(v) + " ¢", false],
+      ["ee", "Escape de aire (susurro/voz)", v=>v.toFixed(2), false],
+      ["larga", "Nota más larga", v=>v.toFixed(1) + " s", true],
       ["estab", "Movimiento al sostener", v=>"±" + Math.round(v) + " ¢", false],
-      ["ataque", "Tiempo para encontrar la nota", v=>(v/1000).toFixed(1) + " s", false],
-      ["soplo", "Soplo más largo", v=>v.toFixed(1) + " s", true],
-      ["sirena", "Alcance de la sirena", v=>Math.round(v) + " semitonos", true]
-    ].filter(r=>M[r[0]] !== undefined && !(r[0] === "afin" && !datosAfin));
+      ["claridad", "Claridad (aprox.)", v=>Math.round(v*100) + " %", true],
+      ["sss", "«sss» más largo", v=>v.toFixed(1) + " s", true],
+      ["sirena", "Alcance de la ambulancia", v=>Math.round(v) + " semitonos", true]
+    ].filter(r=>vals[r[0]] !== undefined);
 
     mal.sort((a,b)=>b.score - a.score); bien.sort((a,b)=>b.score - a.score);
-    return {M:M, P:P, bien:bien.slice(0, 3), mal:mal.slice(0, 3), filas:filas};
+    return {vals:vals, P:P, bien:bien.slice(0, 3), mal:mal.slice(0, 3), filas:filas};
   }
 
   function mostrarResumen(r){
-    const hay = r.M.nNotas || r.M.soplo !== undefined || r.M.sirena !== undefined || r.M.ancla !== undefined;
-    if(!hay) return;
-    let h = "<h3>Resumen de hoy</h3><p class=\"rsSub\">Lo que el micrófono escuchó en esta sesión.</p>";
+    if(!r.filas.length && !r.mal.length && !r.bien.length) return;
+    let h = "<h3>Resumen de hoy</h3><p class=\"rsSub\">Lo que el micrófono escuchó, con foco en el aire y la estabilidad.</p>";
     if(r.mal.length){
       h += "<h4>PARA MEJORAR</h4><ol>" + r.mal.map(x=>"<li>" + x.txt + "<small>" + x.tip + "</small></li>").join("") + "</ol>";
     }else{
-      h += "<h4>PARA MEJORAR</h4><p class=\"rsSub\">Nada importante que corregir hoy. Sigue así: la exigencia sube sola cada semana.</p>";
+      h += "<h4>PARA MEJORAR</h4><p class=\"rsSub\">Nada importante que corregir hoy. Sigue así: las metas suben solas con tus récords.</p>";
     }
     if(r.bien.length) h += "<h4>LO QUE SALIÓ BIEN</h4><ul>" + r.bien.map(x=>"<li>" + x.txt + "</li>").join("") + "</ul>";
     if(r.filas.length){
       h += "<h4>TU TENDENCIA</h4><table>";
       r.filas.forEach(f=>{
-        const k = f[0], v = r.M[k], antes = r.P[k];
+        const k = f[0], v = r.vals[k], antes = r.P[k];
         let cmp = "";
         if(antes !== undefined && antes > 0){
-          const mejor = f[3] ? v > antes*1.08 : v < antes*0.92;
-          const peor  = f[3] ? v < antes*0.92 : v > antes*1.08;
+          const mejor = f[3] ? v > antes*1.05 : v < antes*0.95;
+          const peor  = f[3] ? v < antes*0.95 : v > antes*1.05;
           cmp = " <span class=\"" + (mejor ? "up" : peor ? "down" : "") + "\">" + (mejor ? "▲" : peor ? "▼" : "=") + "</span>"
               + "<br><small style=\"color:var(--muted)\">antes " + f[2](antes) + "</small>";
         }
@@ -2516,7 +2541,7 @@
       });
       h += "</table>";
     }
-    h += "<p class=\"limite\">El micrófono mide altura, estabilidad, tiempos y aire. No ve tu postura ni la tensión del cuello o la mandíbula, y no juzga timbre ni dicción. Grábate en video una vez por semana cantando lo mismo y compárate.</p>";
+    h += "<p class=\"limite\">El micrófono mide duración, estabilidad, volumen y qué tan periódico (limpio) es el sonido; la claridad es aproximada y depende del micrófono, así que fíjate más en tu tendencia que en el número. No ve tu postura ni la tensión del cuello: eso, con tu maestra.</p>";
     R.datos.resumen = {fecha:fechaStr(), html:h};
     rutGuardar();
     const box = $("resumen");
@@ -2524,14 +2549,32 @@
     setTimeout(()=> box.scrollIntoView({behavior:"smooth", block:"start"}), 300);
   }
 
-  /* ---- bloques guiados: sin pentagrama, con el micrófono como testigo ---- */
+  /* ---- bloques guiados: el micrófono como testigo ---- */
   function guiaStep(d, ts, dt){
     const g = S.guia;
     if(!g) return;
-    const suena = d.f > 0 || (d.rms || 0) > UMBRAL_SONIDO;
-    if(g.tipo === "soplo") soploStep(g, suena, ts);
-    else if(g.tipo === "sirena") sirenaStep(g, d, ts);
-    else calmaStep(g, d, suena, dt);
+    d.raw = d.mudo ? 0 : rmsCrudo();
+    if(g.tipo === "sirena"){ sirenaStep(g, d, ts); return; }
+    // Los ejercicios de aire primero escuchan el cuarto un segundo.
+    if(g.fase === "inicio"){ g.fase = "calibra"; g.t0 = ts; g.amb = []; }
+    if(g.fase === "calibra"){
+      if(!d.mudo) g.amb.push(d.raw);
+      $("arrow").className = "arrow"; $("arrow").textContent = "·";
+      $("hold").style.width = "0%";
+      $("msgMain").textContent = "Silencio un segundo…";
+      $("msgSub").textContent = "Escuchando el ruido del cuarto.";
+      if(ts - g.t0 < 1000) return;
+      // El cuarto «en silencio» es la parte más callada de ese segundo, por si
+      // aún sonaba el ejercicio anterior; y los umbrales quedan acotados.
+      const orden = g.amb.slice().sort((x,y)=>x-y);
+      const amb = orden.length ? orden[Math.floor(orden.length*0.2)] : 0.002;
+      g.umbIn = Math.min(0.012, Math.max(0.003, amb*2.5));   // una inhalación que se oye
+      g.umbS = Math.min(0.03, Math.max(0.006, amb*4));       // «sss» o voz
+      g.fase = "listo";
+    }
+    if(g.tipo === "aire") aireStep(g, d, ts, dt);
+    else if(g.tipo === "ee") eeStep(g, d, ts, dt);
+    else if(g.tipo === "larga") largaStep(g, d, ts, dt);
   }
 
   function notaVoz(d){
@@ -2541,46 +2584,223 @@
     return (m < FLOOR-3 || m > CEIL+3) ? null : m;
   }
 
-  function soploStep(g, suena, ts){
-    if(g.fase === "descansa"){
-      if(ts - g.t0 < 2500) return;
-      g.fase = "inicio";
-    }
-    if(g.fase === "inicio"){ g.fase = "inhala"; g.t0 = ts; }
-    if(g.fase === "inhala"){
-      const p = (ts - g.t0)/4000;
-      $("hold").style.width = Math.min(100, p*100).toFixed(0) + "%";
-      $("arrow").className = "arrow"; $("arrow").textContent = "↑";
-      $("msgMain").textContent = "Inhala… " + Math.max(1, 4 - Math.floor((ts - g.t0)/1000));
-      $("msgSub").textContent = "Por la nariz: panza y costillas hacia afuera, hombros quietos.";
-      if(p >= 1){ g.fase = "suelta"; g.t0 = ts; g.ini = 0; g.ult = 0; }
+  // Inhalación cronometrada que además escucha si se oyó. Al terminar llama a «luego».
+  function inhalaStep(g, d, ts, dt, ms, luego){
+    if(!g.inh){ g.inh = {t0:ts, ruido:0}; }
+    const I = g.inh, t = ts - I.t0;
+    if(t > 300 && d.raw > g.umbIn) I.ruido += dt;   // los primeros 300 ms aún se oye la indicación
+    $("hold").style.width = Math.min(100, t/ms*100).toFixed(0) + "%";
+    $("arrow").className = "arrow"; $("arrow").textContent = "↑";
+    $("msgMain").textContent = "Inhala en silencio… " + Math.max(1, Math.ceil((ms - t)/1000));
+    $("msgSub").textContent = I.ruido > 250 ? "Se oye: abre la garganta como en un bostezo." : "Bajo y elegante: costillas y panza, hombros quietos.";
+    if(t < ms) return;
+    const ruidosa = I.ruido > 250;
+    if(R.ses) R.ses.inhala.push(ruidosa);
+    g.inhRuidosa = ruidosa;
+    g.inh = null;
+    luego();
+  }
+
+  // Cronómetro de un sonido sostenido («sss», «zzz»): se corta tras medio segundo de silencio.
+  function cronoStep(g, d, ts, voz){
+    const suena = d.raw > g.umbS || d.f > 0;
+    if(suena){ if(!g.ini) g.ini = ts; g.ult = ts; if(voz){ g.nFr++; if(d.f > 0) g.nVoz++; } }
+    if(!g.ini) return null;
+    if(ts - g.ult < 500) return {vivo:true, dur:(g.ult - g.ini)/1000};
+    const dur = (g.ult - g.ini)/1000;
+    g.ini = 0;
+    return dur >= 1.5 ? {vivo:false, dur:dur} : null;   // menos que eso fue un ruido
+  }
+
+  function aireStep(g, d, ts, dt){
+    const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
+    if(g.fase === "listo" || g.fase === "descansa" && ts - g.t0 > 3000) paso("exhala");
+    if(g.fase === "descansa") return;
+    if(g.fase === "exhala"){
+      $("arrow").textContent = "↓"; $("hold").style.width = "0%";
+      $("msgMain").textContent = "Saca todo el aire";
+      $("msgSub").textContent = "Sin forzar.";
+      if(ts - g.t0 > 2200) paso("inhala");
       return;
     }
-    // fase «suelta»
-    if(suena){ if(!g.ini) g.ini = ts; g.ult = ts; }
-    if(!g.ini){
-      $("arrow").textContent = "↓";
+    if(g.fase === "inhala"){ inhalaStep(g, d, ts, dt, [4000,4000,5000,6000][nivel()], ()=>paso("sostiene")); return; }
+    if(g.fase === "sostiene"){
+      const t = ts - g.t0;
+      $("arrow").textContent = "·";
+      $("msgMain").textContent = "Sostén abierto… " + Math.max(1, Math.ceil((2000 - t)/1000));
+      $("msgSub").textContent = "Costillas abiertas, garganta abierta: no cierres.";
+      if(t > 2000){ paso("sopla"); g.ini = 0; }
+      return;
+    }
+    if(g.fase === "sopla"){
+      const r = cronoStep(g, d, ts, false);
+      const meta = Math.max(15, Math.round(mejorReciente("sss")*1.05));
+      if(!r){
+        $("arrow").textContent = "→";
+        $("msgMain").textContent = "Suelta en «sss» parejo";
+        $("msgSub").textContent = "Fina y constante, hasta que se acabe.";
+        if(!g.ini && ts - g.t0 > 8000) paso("exhala");
+        return;
+      }
+      $("hold").style.width = Math.min(100, r.dur/meta*100).toFixed(0) + "%";
+      if(r.vivo){
+        $("msgMain").textContent = r.dur.toFixed(1) + " s";
+        $("msgSub").textContent = "Meta " + meta + " s · parejo, sin empujar…";
+        return;
+      }
+      if(R.ses) R.ses.sss.push(r.dur);
+      $("msgMain").textContent = r.dur.toFixed(1) + " s de «sss»" + (r.dur >= meta ? " — ¡meta!" : "");
+      $("msgSub").textContent = g.inhRuidosa ? "Se escuchó la toma de aire: la próxima, más lenta y abierta." : "Toma de aire silenciosa ✓ · descansa.";
+      $("arrow").textContent = "·";
+      paso("descansa");
+    }
+  }
+
+  // «e» susurrada contra «e» con voz: misma vocal, solo cambia si las cuerdas vibran.
+  function eeStep(g, d, ts, dt){
+    const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
+    const conVoz = g.cual === "voz";
+    if(g.fase === "listo"){ g.cual = "secreto"; g.s = 0; g.v = 0; paso("inhala"); }
+    if(g.fase === "descansa"){ if(ts - g.t0 > 3500) paso("inhala"); return; }
+    if(g.fase === "fin"){ if(ts - g.t0 > 5000){ rutinaFinBloque(true); } return; }
+    if(g.fase === "inhala"){
+      inhalaStep(g, d, ts, dt, 3000, ()=>{ paso("sostiene"); g.ini = 0; g.nFr = 0; g.nVoz = 0; });
+      return;
+    }
+    const r = cronoStep(g, d, ts, true);
+    if(!r){
+      $("arrow").textContent = "→"; $("hold").style.width = "0%";
+      $("msgMain").textContent = conVoz ? "Sostén «eeee» CON VOZ" : "Sostén «eeee» EN SECRETO";
+      $("msgSub").textContent = conVoz ? "Volumen normal, lo más larga que puedas." : "Susurrada pero que se oiga, lo más larga que puedas.";
+      if(!g.ini && ts - g.t0 > 8000) paso("inhala");
+      return;
+    }
+    $("hold").style.width = Math.min(100, r.dur/25*100).toFixed(0) + "%";
+    if(r.vivo){
+      $("msgMain").textContent = (conVoz ? "Con voz: " : "En secreto: ") + r.dur.toFixed(1) + " s";
+      $("msgSub").textContent = "Pareja, hasta que se acabe el aire.";
+      return;
+    }
+    const voz = g.nFr ? g.nVoz/g.nFr : 0;
+    if(!conVoz){
+      if(voz > 0.3){
+        $("msgMain").textContent = "Eso tuvo voz";
+        $("msgSub").textContent = "La primera va en secreto, solo aire, como cuando cuentas un chisme. Otra vez.";
+        paso("descansa");
+        return;
+      }
+      g.s = r.dur; g.cual = "voz";
+      $("msgMain").textContent = "En secreto: " + r.dur.toFixed(1) + " s";
+      $("msgSub").textContent = "Descansa. Ahora la «e» CON VOZ.";
+      paso("descansa");
+      return;
+    }
+    if(voz < 0.3){
+      $("msgMain").textContent = "No escuché voz";
+      $("msgSub").textContent = "Esta va con voz normal, como si hablaras. Otra vez.";
+      paso("descansa");
+      return;
+    }
+    g.v = r.dur;
+    const ratio = g.s/g.v;
+    if(R.ses) R.ses.ee = {s:g.s, v:g.v, ratio:ratio};
+    $("msgMain").textContent = "Cociente " + ratio.toFixed(2);
+    $("msgSub").textContent = "en secreto " + g.s.toFixed(1) + " s · con voz " + g.v.toFixed(1) + " s · "
+      + (ratio > 1.4 ? "hay escape de aire" : ratio > 1.2 ? "algo de escape" : "buen cierre");
+    paso("fin");
+  }
+
+  // Notas centradas un poco abajo de la mitad de tu zona cómoda, variando alrededor.
+  const LARGA_OFS = [0, 2, -2, 3, -1, 4, 1];
+  const LARGA_VOC = ["«i»", "«a»", "«i»", "«o»"];
+  function largaStep(g, d, ts, dt){
+    const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
+    if(g.fase === "listo" || g.fase === "resultado" && ts - g.t0 > 5000){
+      const lo = S.tess ? S.tess.lo : 48, hi = S.tess ? S.tess.hi : 64;
+      const centro = Math.round(lo + (hi - lo)*0.4);
+      g.obj = Math.max(lo, Math.min(hi, centro + LARGA_OFS[g.n % LARGA_OFS.length]));
+      g.voc = LARGA_VOC[g.n % LARGA_VOC.length];
+      g.meta = metaLarga();
+      g.n++;
+      sound(g.obj, 1300);
+      paso("escucha");
+      showProbe(g.obj, 0, null, false);
+      $("badge").textContent = "Nota larga · " + g.voc;
+      $("arrow").textContent = "♪";
+      $("msgMain").textContent = "Escucha: " + midiLabel(g.obj) + " en " + g.voc;
+      $("msgSub").textContent = "Meta: " + g.meta + " s sin que se mueva.";
       $("hold").style.width = "0%";
-      $("msgMain").textContent = "Suelta en «vvvv»";
-      $("msgSub").textContent = "Parejo y suave, hasta que se acabe el aire.";
-      if(ts - g.t0 > 8000){ g.fase = "inhala"; g.t0 = ts; }
+      return;
+    }
+    if(g.fase === "resultado") return;
+    if(g.fase === "escucha"){ if(ts - g.t0 > 1900) paso("inhala"); return; }
+    if(g.fase === "inhala"){
+      inhalaStep(g, d, ts, dt, 3000, ()=>{ paso("canta"); g.ini = 0; g.ult = 0; g.fr = []; });
+      return;
+    }
+    // canta
+    const m = notaVoz(d);
+    if(m !== null){
+      if(!g.ini) g.ini = ts;
+      g.ult = ts;
+      const c = (m - g.obj)*100;
+      if(Math.abs(c) < 300) g.fr.push({t:ts - g.ini, c:c, q:d.q || 0, r:d.rms || 0});
+    }
+    if(!g.ini){
+      $("arrow").textContent = "·";
+      $("msgMain").textContent = "Canta " + midiLabel(g.obj) + " en " + g.voc + " y sostenla";
+      $("msgSub").textContent = "Volumen cómodo, hasta que se acabe el aire.";
+      if(ts - g.t0 > 8000) paso("listo");
       return;
     }
     const dur = (g.ult - g.ini)/1000;
-    const rec = mejorDe(R.datos.soplo);
-    $("hold").style.width = Math.min(100, dur/Math.max(10, rec, g.best)*100).toFixed(0) + "%";
-    if(ts - g.ult < 600){
-      $("msgMain").textContent = dur.toFixed(1) + " s";
-      $("msgSub").textContent = g.best ? "Tu mejor de hoy: " + g.best.toFixed(1) + " s" : "Parejo, sin empujar…";
+    if(ts - g.ult < 450){
+      const ult = g.fr.slice(-30).map(x=>x.c);
+      const c = ult.length ? ult[ult.length-1] : null;
+      const tuned = c !== null && Math.abs(c) <= S.tol;
+      showProbe(g.obj, Math.min(1, dur/g.meta), c, tuned);
+      $("badge").textContent = "Nota larga · " + g.voc;
+      $("hold").style.width = Math.min(100, dur/g.meta*100).toFixed(0) + "%";
+      $("msg").classList.toggle("tuned", tuned);
+      $("arrow").textContent = c === null ? "·" : tuned ? "●" : c < 0 ? "↑" : "↓";
+      $("msgMain").textContent = dur.toFixed(1) + " s" + (dur >= g.meta ? " — ¡meta!" : "");
+      if(ult.length >= 10){
+        const s = promedio(ult), sd = Math.sqrt(Math.max(0, promedio(ult.map(x=>x*x)) - s*s));
+        $("msgSub").textContent = (sd <= 8 ? "Quieta" : sd <= 14 ? "Se mueve un poco" : "Se mueve") + " · ±" + Math.round(sd) + " ¢ · " + firmado(s);
+      }
       return;
     }
-    if(dur < 1.5){ g.ini = 0; return; }   // fue un ruido, no un soplo
-    g.best = Math.max(g.best, dur);
-    if(R.ses) R.ses.soplos.push(dur);
-    $("msgMain").textContent = dur.toFixed(1) + " s" + (rec && dur > rec ? " — ¡récord!" : "");
-    $("msgSub").textContent = "Descansa y prepárate para inhalar otra vez.";
-    $("arrow").textContent = "·";
-    g.fase = "descansa"; g.t0 = ts;
+    $("msg").classList.remove("tuned");
+    if(dur < 1.5){ g.ini = 0; g.fr = []; return; }
+    largaResultado(g, ts);
+    paso("resultado");
+  }
+
+  function largaResultado(g, ts){
+    const dur = (g.ult - g.ini)/1000;
+    let F = g.fr.filter(x=>x.t >= 600);           // sin el ataque
+    if(F.length < 10) F = g.fr;
+    if(F.length < 5){ g.ini = 0; return; }
+    const cs = F.map(x=>x.c), s = promedio(cs);
+    const sd = Math.sqrt(Math.max(0, promedio(cs.map(x=>x*x)) - s*s));
+    const fin = F[F.length-1].t;
+    const ini1 = F.filter(x=>x.t < F[0].t + 1000).map(x=>x.c), fin1 = F.filter(x=>x.t > fin - 1000).map(x=>x.c);
+    const deriva = F.length >= 30 ? promedio(fin1) - promedio(ini1) : 0;
+    const rs = F.map(x=>x.r), rm = promedio(rs);
+    const cv = rm ? Math.sqrt(Math.max(0, promedio(rs.map(x=>x*x)) - rm*rm))/rm : 0;
+    const q = mediana(F.map(x=>x.q));
+    if(R.ses) R.ses.largas.push({dur:dur, sd:sd, deriva:deriva, cv:cv, q:q});
+    g.ini = 0;
+    const notas = [];
+    notas.push(sd <= 8 ? "quieta" : "se movió ±" + Math.round(sd) + " ¢");
+    if(deriva <= -15) notas.push("al final bajó");
+    else if(deriva >= 15) notas.push("al final subió");
+    if(cv > 0.25) notas.push("volumen a tirones");
+    if(g.inhRuidosa) notas.push("se oyó la toma de aire");
+    $("msgMain").textContent = dur.toFixed(1) + " s" + (dur >= g.meta ? " — ¡meta cumplida!" : "");
+    $("msgSub").textContent = notas.join(" · ");
+    $("hold").style.width = Math.min(100, dur/g.meta*100).toFixed(0) + "%";
+    if(navigator.vibrate) navigator.vibrate(40);
   }
 
   function sirenaStep(g, d, ts){
@@ -2589,8 +2809,8 @@
     if(m === null){
       g.prevM = undefined;
       $("arrow").className = "arrow"; $("arrow").textContent = "·";
-      $("msgMain").textContent = g.lo === null ? "Desliza de grave a agudo" : "Otra, un poquito más amplia";
-      $("msgSub").textContent = g.lo === null ? "En «ng» o «uuu», sin cortar el sonido." : cubre();
+      $("msgMain").textContent = g.lo === null ? "Desliza en «iii» de grave a agudo" : "Otra, un poquito más amplia";
+      $("msgSub").textContent = g.lo === null ? "Como sirena de ambulancia, sin cortar el sonido." : cubre();
       return;
     }
     // Un salto brusco de unos semitonos entre dos cuadros seguidos es la firma
@@ -2604,20 +2824,11 @@
     g.hi = g.hi === null ? m : Math.max(g.hi, m);
     const rango = S.tessFull ? S.tessFull.hi - S.tessFull.lo : 24;
     showProbe(m, 0, null, true);
-    $("badge").textContent = "Sirenas";
+    $("badge").textContent = "Ambulancia «i»";
     $("hold").style.width = Math.min(100, (g.hi - g.lo)/rango*100).toFixed(0) + "%";
     $("arrow").textContent = "~";
     $("msgMain").textContent = midiLabel(m);
     $("msgSub").textContent = cubre();
-  }
-
-  function calmaStep(g, d, suena, dt){
-    if(suena) g.voz += dt;
-    const m = notaVoz(d);
-    if(m !== null){ showProbe(m, 0, null, true); $("badge").textContent = "Enfriamiento"; }
-    $("arrow").className = "arrow"; $("arrow").textContent = suena ? "↘" : "·";
-    $("msgMain").textContent = suena ? "Así, suave y hacia abajo…" : "Zumba «mmm» y desliza hacia abajo";
-    $("msgSub").textContent = Math.round(g.voz/1000) + " s zumbando";
   }
 
   /* ---------------- controles ---------------- */
@@ -2852,7 +3063,7 @@
   $("selEcho").addEventListener("change", e=>{ S.echo = Number(e.target.value); guardar(); });
   $("selAcorde").addEventListener("change", e=>{ S.acorde = e.target.value; guardar(); });
   $("selPatron").addEventListener("change", e=>{
-    S.patron = e.target.value; S.exStart = 0; S.vuelta = false;
+    S.patron = e.target.value; S.exStart = 0; S.vuelta = false; S.letraRondas = 0;
     if(S.running && S.play==="vocaliz") vocalizNueva();
     guardar();
   });
@@ -2861,6 +3072,8 @@
     if(S.running && S.play==="vocaliz") vocalizNueva();
     guardar();
   });
+  $("selLetra").addEventListener("change", e=>{ S.letra = e.target.value; S.letraRondas = 0; guardar(); });
+  $("notasClase").addEventListener("input", e=>{ R.datos.notas = e.target.value; rutGuardar(); pintarHoy(); });
   $("selOrden").addEventListener("change", e=>{ S.orden = e.target.value; pintarStats(); guardar(); });
   $("selFocus").addEventListener("change", e=>{ S.focus = e.target.value; guardar(); });
   $("clearStats").addEventListener("click", ()=>{
@@ -2894,6 +3107,8 @@
   $("badge").textContent = "Listo";
   cargar();
   rutCargar();
+  if(R.datos.notas === null) R.datos.notas = NOTAS_CLASE;
+  $("notasClase").value = R.datos.notas;
   pintarHoy();
 })();
 </script>
