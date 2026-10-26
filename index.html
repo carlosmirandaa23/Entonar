@@ -106,6 +106,13 @@
   .rutInfo ol{margin:8px 0;padding-left:20px;font-size:14px;line-height:1.5}
   .rutInfo li{margin:5px 0}
   .rutInfo .meta{color:var(--text)}
+  .fn{font-style:normal;font-size:10.5px;color:var(--gold);border:1px solid rgba(201,162,39,.45);border-radius:99px;padding:1px 7px;margin-left:4px;white-space:nowrap;vertical-align:1px}
+  .hoyLista li.ok .fn{color:var(--ok);border-color:rgba(47,143,114,.5)}
+  .funciones{margin:0 0 12px;font-size:13px}
+  .funciones summary{cursor:pointer;color:var(--gold);font-size:13px}
+  .funciones ol{margin:8px 0 6px;padding-left:20px;line-height:1.45}
+  .funciones li{margin:4px 0}
+  .funciones p{color:var(--muted);font-size:12px;margin:4px 0 0}
   .clase{margin:0 0 14px;padding:10px 12px;border-left:3px solid var(--gold);background:rgba(201,162,39,.08);border-radius:0 6px 6px 0}
   .clase b{font-size:12px;color:var(--gold);letter-spacing:.3px}
   .clase ul{margin:4px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45}
@@ -142,6 +149,16 @@
       <div class="dias" id="hoyDias" aria-label="Últimos 7 días"></div>
     </div>
     <ol class="hoyLista" id="hoyLista"></ol>
+    <details class="funciones">
+      <summary>Las 4 funciones de tu voz</summary>
+      <ol>
+        <li><b>Cierre de cuerdas.</b> Pueden cerrar con el borde (limpio, fino), con su parte ancha (grueso) o quedarse a medio cerrar (aireado). Es tu punto principal.</li>
+        <li><b>Afinación.</b> Las cuerdas se alargan para los agudos y se acortan para los graves. Ya vas bien: la mantienes con las terceras y la ambulancia.</li>
+        <li><b>Altura de la laringe.</b> Sube o baja y cambia el timbre sin cambiar la nota. Estrechando su parte de arriba sale el twang.</li>
+        <li><b>Resonadores.</b> Con la lengua contra el paladar mandas el sonido a la nariz o a la boca, y ahí formas vocales y consonantes.</li>
+      </ol>
+      <p>Cada ejercicio dice qué función trabaja. La «Función del día» las practica por contraste: el cierre sale la mitad de los días.</p>
+    </details>
     <div class="clase" id="hoyClase" hidden></div>
     <button class="act primary" id="rutBtn">Empezar rutina · 15 min</button>
     <button class="mini" id="verResumen" hidden style="margin-top:10px;width:100%">Ver el último resumen</button>
@@ -2078,7 +2095,7 @@
   ];
 
   const B_AIRE = {
-    id:"aire", titulo:"Toma de aire elegante", min:6, tipo:"aire",
+    id:"aire", titulo:"Toma de aire elegante", min:5, tipo:"aire", fn:"Aire",
     porque:"Indicación de tu maestra: mucho aire, pero elegante. Una toma silenciosa y baja llena más y deja la garganta abierta; soltarlo en «sss» parejo te enseña a gastarlo poco a poco.",
     pasos:[
       "«Saca el aire»: suelta todo sin forzar.",
@@ -2088,7 +2105,7 @@
     ]
   };
   const B_EE = {
-    id:"ee", titulo:"Prueba del aire: «e» en secreto / «e» con voz", min:2, tipo:"ee",
+    id:"ee", titulo:"Prueba del aire: «e» en secreto / «e» con voz", min:2, tipo:"ee", fn:"Cierre",
     porque:"Mide el escape de aire. En secreto (susurrando) las cuerdas no cierran y el aire solo depende de tus pulmones; con voz, también depende de qué tan bien cierran. Si la «e» con voz dura mucho menos que la susurrada, se está escapando aire por las cuerdas.",
     pasos:[
       "Inhala bien y di una «eeee» EN SECRETO, susurrada pero que se oiga, lo más larga que puedas y pareja.",
@@ -2098,7 +2115,7 @@
     ]
   };
   const B_AMBULANCIA = {
-    id:"ambulancia", titulo:"Ambulancia con «i»", min:3, tipo:"sirena",
+    id:"ambulancia", titulo:"Ambulancia con «i»", min:3, tipo:"sirena", fn:"Afinación",
     porque:"Indicación de tu maestra. La «i» acerca las cuerdas y deja escapar menos aire que la «a»; deslizarla de grave a agudo une los registros sin que se rompa la voz.",
     pasos:[
       "Sonríe un poquito y canta «iiii» con la lengua apoyada detrás de los dientes de abajo.",
@@ -2108,7 +2125,7 @@
     ]
   };
   const B_LARGA = {
-    id:"larga", titulo:"Nota larga en un solo aliento", min:8, tipo:"larga",
+    id:"larga", titulo:"Nota larga en un solo aliento", min:6, tipo:"larga", fn:"Cierre · aire",
     porque:"Trabaja los dos puntos que más te fallan: que no se escape aire y que la nota no se mueva. La app mide cuánto duras, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y qué tan limpio (sin aire) suena.",
     pasos:[
       "Escucha la nota de referencia.",
@@ -2125,7 +2142,7 @@
   function bloqueTerceras(id, clave, titulo, min, extra){
     const e = (R.datos.terceras[clave] || {}).etapa || 0;
     return {
-      id:id, tipo:"app", min:min, titulo:titulo, clave:clave,
+      id:id, tipo:"app", min:min, titulo:titulo, clave:clave, fn:"Afinación",
       porque:"Indicación de tu maestra: aprenderte las terceras. El objetivo no es memorizar sílabas, sino oír cada salto antes de cantarlo, afinado y con la voz unida. Por eso el ejercicio te va quitando ayudas: primero las sílabas y luego el patrón.",
       pasos:[
         "Nivel " + (e+1) + " de 3: " + ETAPAS_T[e] + ".",
@@ -2220,13 +2237,13 @@
     const n = diaN(), nv = nivel();
     const cal = CALENTAMIENTOS[n % CALENTAMIENTOS.length];
     return [
-      {id:"calent", titulo:cal.titulo, min:3, tipo:"app",
+      {id:"calent", titulo:cal.titulo, min:3, tipo:"app", fn:"Cierre",
        porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
        pasos:cal.pasos,
        cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
-      B_AIRE, B_EE, B_AMBULANCIA, B_LARGA,
-      bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 4, silabasDe("terceras5") + "."),
-      bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 4,
+      B_AIRE, B_EE, bloqueFuncion(n), B_AMBULANCIA, B_LARGA,
+      bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 3, silabasDe("terceras5") + "."),
+      bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 3,
         "son dos renglones. Primero la SUBIDA: " + silabasDe("terceras") + ". Al terminarla aparece la BAJADA: " + silabasDe("tercerasB") + ". Arriba a la izquierda dice en cuál vas.")
     ];
   }
@@ -2238,7 +2255,7 @@
     $("hoySub").textContent = "Día " + (diaN()+1) + " · nivel " + (nivel()+1)
       + (r ? " · racha de " + r + (r===1 ? " día" : " días") : " · " + Math.round(total) + " min, paso a paso");
     $("hoyLista").innerHTML = bl.map(b=>
-      '<li class="' + (hechos.indexOf(b.id) >= 0 ? "ok" : "") + '"><span>' + b.titulo + '</span><small>' + fmtMin(b.min) + '</small></li>'
+      '<li class="' + (hechos.indexOf(b.id) >= 0 ? "ok" : "") + '"><span>' + b.titulo + (b.fn ? ' <em class="fn">' + b.fn + '</em>' : '') + '</span><small>' + fmtMin(b.min) + '</small></li>'
     ).join("");
     const INI = ["D","L","M","M","J","V","S"], dias = new Set(R.datos.dias);
     let h = "";
@@ -2351,7 +2368,7 @@
       return;
     }
     S.mode = "guia";
-    S.guia = {tipo:b.tipo, fase:"inicio", t0:0, ini:0, ult:0, lo:null, hi:null, amb:[], n:0};
+    S.guia = {tipo:b.tipo, func:b.func, fase:"inicio", t0:0, ini:0, ult:0, lo:null, hi:null, amb:[], n:0};
     hist.length = 0;
     $("toneBtn").textContent = "Escuchar nota"; $("toneBtn").disabled = true;
     $("skipBtn").textContent = "Siguiente";
@@ -2447,7 +2464,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[]}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2570,6 +2587,27 @@
     if(M.fallos >= 3) add(mal, M.fallos/4, "Se escaparon " + M.fallos + " notas en las terceras.",
       "Repite el patrón diciendo las sílabas sin cantar, y luego cantándolas.");
 
+    // Función del día: lo que cambió entre una forma y otra (mediana de las rondas)
+    const FX = R.ses.funciones;
+    if(FX.length){
+      const func = FX[0].func, med = k => mediana(FX.map(x=>x.ev[k]).filter(v=>typeof v === "number"));
+      if(func === "cierre"){
+        const dq = med("difCierre");
+        if(dq !== null && dq >= 0.05) add(bien, 2.6, "Ya distingues aireado de limpio: tu sonido limpio gana " + Math.round(dq*100) + " puntos de claridad.");
+        else if(dq !== null) add(mal, 3, "Tu sonido «limpio» todavía sale casi igual de aireado que el aireado.",
+          "Busca el «quejido de cachorrito»: muy suave pero sin soplo. Empieza con «mmm» y pasa a «iii» sin cortar; si se oye aire, hazlo más pequeño, no más fuerte.");
+      }else{
+        const db = med("difBrillo"), salto = func === "laringe" ? med("saltoNota") : null;
+        const nom = {laringe:"Oscuro y brillante", twang:"El twang", resonadores:"Nariz y boca"}[func];
+        if(salto !== null && salto > 50) add(mal, 2, "Al mover la laringe se te movió la nota (" + Math.round(salto) + " ¢).",
+          "La laringe cambia el timbre, no el tono: escucha la nota antes de cada forma y no la sueltes mientras cambias de bostezo a sonrisa.");
+        if(db !== null && db >= 3) add(bien, 2, nom + ": se notó la diferencia (+" + Math.round(db) + " dB de brillo).");
+        else if(db !== null) add(mal, 1.8, nom + ": casi no cambió el sonido.",
+          func === "twang" ? "Exagera: voz de bruja o de pato, pequeña y metálica. El twang no es volumen, es estrechar."
+          : func === "laringe" ? "Exagera el bostezo (voz de oso) y la sonrisa (voz de caricatura)."
+          : "En «ng» la lengua toca el paladar atrás; en «a» bájala del todo.");
+      }
+    }
     Object.keys(R.ses.terceras).forEach(k=>{
       const t = R.ses.terceras[k], nom = k === "terceras5" ? "Terceras en una quinta" : "Terceras completas";
       if(t.sube) add(bien, 2.2, nom + ": subiste al nivel " + (t.etapa+1) + " (" + ETAPAS_T[t.etapa] + ").");
@@ -2631,6 +2669,180 @@
     setTimeout(()=> box.scrollIntoView({behavior:"smooth", block:"start"}), 300);
   }
 
+  /* ---- las cuatro funciones de la voz: ejercicios de contraste ---- */
+  // Se canta la misma nota de dos o tres formas y la app compara qué cambió:
+  // claridad (qué tan periódico es el sonido: baja con el aire), brillo (energía
+  // de 2 a 4 kHz contra la de abajo), afinación y volumen. Las cifras dependen del
+  // micrófono; lo que importa es la diferencia entre una forma y otra.
+  const FUNCIONES = {
+    cierre:{
+      fn:"Cierre", titulo:"Cierre de cuerdas: aireado, limpio y grueso", corto:"aireado, limpio, grueso",
+      porque:"Función 1 de tu voz. Las cuerdas pueden quedarse a medio cerrar (sonido aireado), cerrar solo con el borde (limpio y fino) o cerrar con su parte más ancha (grueso, como voz de habla fuerte). Tu escape de aire es quedarte en la primera sin querer. Aquí aprendes a sentir las tres y a elegir.",
+      modos:[
+        {id:"aireado", nombre:"Aireado", vocal:"«a»", como:"Como un suspiro cantado: deja escapar aire a propósito, suave."},
+        {id:"fino", nombre:"Limpio, con el borde", vocal:"«i»", como:"Suave pero SIN aire: un quejido de cachorrito o una «i» de niño. Nada de soplo."},
+        {id:"grueso", nombre:"Grueso", vocal:"«e»", como:"Como cuando llamas a alguien: «¡eeeh!». Voz de habla firme, sin gritar ni apretar el cuello."}
+      ]
+    },
+    laringe:{
+      fn:"Laringe", titulo:"Altura de la laringe: oscuro y brillante", corto:"laringe oscura y brillante",
+      porque:"Función 3. La laringe puede bajar (como al bostezar, sonido oscuro) o subir (como al sonreír, sonido brillante) y cambiar el timbre SIN cambiar la nota. Si la mueves sin que se te mueva la afinación, controlas cómo suenas.",
+      modos:[
+        {id:"normal", nombre:"Normal", vocal:"«a»", como:"Tu voz de siempre, cómoda."},
+        {id:"oscuro", nombre:"Oscuro (laringe baja)", vocal:"«o»", como:"Como al empezar un bostezo: siente que la laringe baja. Voz de ópera exagerada o de oso. Misma nota."},
+        {id:"brillante", nombre:"Brillante (laringe alta)", vocal:"«i»", como:"Sonríe y piensa en voz de niño o de caricatura: la laringe sube. Misma nota, sin apretar."}
+      ]
+    },
+    twang:{
+      fn:"Laringe · twang", titulo:"Twang: brillo sin esfuerzo", corto:"twang",
+      porque:"La parte de arriba de la laringe se puede estrechar y crear el «twang»: un sonido brillante y metálico que se oye mucho más sin gastar más aire. Es de las mejores herramientas contra el sonido aireado.",
+      modos:[
+        {id:"normal", nombre:"Normal", vocal:"«e»", como:"Tu voz de siempre, cómoda."},
+        {id:"twang", nombre:"Twang de bruja", vocal:"«ñe»", como:"Imita a una bruja de caricatura o a un pato: «ñeee». Pequeño, metálico y nasal, sin subir el volumen."},
+        {id:"twangA", nombre:"Twang abierto", vocal:"«a»", como:"Conserva ese brillo de bruja pero abre a «a»: menos chistoso, igual de brillante."}
+      ]
+    },
+    resonadores:{
+      fn:"Resonadores", titulo:"Resonadores: nariz y boca", corto:"nariz y boca",
+      porque:"Función 4. Con la parte de atrás de la lengua contra el paladar decides si el sonido va a la nariz o a la boca. «ng» lo manda todo a la nariz; al bajar la lengua se abre a la boca. Pasar de uno a otro sin cortar ayuda a que la voz no pierda el cierre al abrir la vocal.",
+      modos:[
+        {id:"nariz", nombre:"Por la nariz", vocal:"«ng»", como:"Como el final de «tengo»: la parte de atrás de la lengua toca el paladar. Si te tapas la nariz, el sonido se corta."},
+        {id:"boca", nombre:"Por la boca", vocal:"«a»", como:"Abre a «a»: la lengua baja y el sonido sale por la boca, con el mismo zumbido de antes."},
+        {id:"mezcla", nombre:"Mitad y mitad", vocal:"«ña»", como:"Una «ñaaa» que vibre en la nariz y en la boca a la vez."}
+      ]
+    }
+  };
+  // El cierre es lo que más te falta: sale la mitad de los días.
+  const ROTA_FUNCIONES = ["cierre", "laringe", "cierre", "twang", "cierre", "resonadores"];
+
+  function bloqueFuncion(n){
+    const k = ROTA_FUNCIONES[n % ROTA_FUNCIONES.length], F = FUNCIONES[k];
+    return {
+      id:"funcion", tipo:"contraste", func:k, fn:F.fn, min:5, titulo:"Función del día: " + F.corto,
+      porque:F.porque,
+      pasos:[
+        "Suena una nota. La vas a cantar de " + F.modos.length + " formas, una tras otra, unos 3 segundos cada una.",
+      ].concat(F.modos.map(m=>m.nombre + " (" + m.vocal + "): " + m.como)).concat([
+        "Al final la app te dice qué cambió entre una y otra. Exagera las diferencias: aquí no se trata de sonar bonito, sino de sentir cada mecanismo."
+      ])
+    };
+  }
+
+  let fbuf = null;
+  // Brillo: energía de 2 a 4 kHz contra la de 80 Hz a 1 kHz, en dB.
+  function brilloCrudo(){
+    if(!analyserRaw) return null;
+    if(!fbuf || fbuf.length !== analyserRaw.frequencyBinCount) fbuf = new Float32Array(analyserRaw.frequencyBinCount);
+    analyserRaw.getFloatFrequencyData(fbuf);
+    const hz = ctx.sampleRate/analyserRaw.fftSize;
+    let lo = 0, hi = 0;
+    for(let i=1;i<fbuf.length;i++){
+      const f = i*hz, p = Math.pow(10, fbuf[i]/10);
+      if(f >= 80 && f < 1000) lo += p;
+      else if(f >= 2000 && f < 4000) hi += p;
+    }
+    return lo > 0 && hi > 0 ? 10*Math.log10(hi/lo) : null;
+  }
+
+  const VOZ_MS = 2600;   // tiempo cantado que se mide en cada forma
+  function contrasteStep(g, d, ts, dt){
+    const F = FUNCIONES[g.func];
+    const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
+    if(g.fase === "listo" || g.fase === "resultado" && ts - g.t0 > 8000){
+      const lo = S.tess ? S.tess.lo : 48, hi = S.tess ? S.tess.hi : 64;
+      g.obj = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo)*0.4) + [0, 2, -1, 3][g.n % 4]));
+      g.n++; g.k = 0; g.res = [];
+      paso("escucha");
+      try{ sound(g.obj, 1200); }catch(e){ reportarFalla(e); }
+      showProbe(g.obj, 0, null, false);
+      $("badge").textContent = F.fn;
+      $("arrow").className = "arrow"; $("arrow").textContent = "♪";
+      $("msgMain").textContent = "Escucha: " + midiLabel(g.obj);
+      $("msgSub").textContent = "La vas a cantar de " + F.modos.length + " formas.";
+      $("hold").style.width = "0%";
+      return;
+    }
+    if(g.fase === "resultado") return;
+    const M = F.modos[g.k];
+    if(g.fase === "escucha" || g.fase === "pausa"){
+      $("msgMain").textContent = (g.k ? "Ahora: " : "Primero: ") + M.nombre + " en " + M.vocal;
+      $("msgSub").textContent = M.como;
+      $("hold").style.width = "0%";
+      if(ts - g.t0 > (g.fase === "escucha" ? 1900 : 2200)){ paso("canta"); g.voz = 0; g.fr = []; }
+      return;
+    }
+    // canta
+    const m = notaVoz(d);
+    const suena = d.f > 0 || d.raw > g.umbS;
+    let c = null;
+    if(suena){
+      g.voz += dt;
+      if(m !== null){ c = (m - g.obj)*100; if(Math.abs(c) > 300) c = null; }
+      g.fr.push({c:c, q:d.f > 0 ? (d.q || 0) : 0.45, r:d.rms || d.raw || 0, b:brilloCrudo()});
+    }
+    const prog = Math.min(1, g.voz/VOZ_MS);
+    showProbe(g.obj, prog, c, c !== null && Math.abs(c) <= 40);
+    $("badge").textContent = F.fn + " · " + (g.k+1) + " de " + F.modos.length;
+    $("hold").style.width = (prog*100).toFixed(0) + "%";
+    $("msgMain").textContent = M.nombre + " en " + M.vocal;
+    $("msgSub").textContent = M.como;
+    if(g.voz < VOZ_MS) return;
+    g.res.push(resumenModo(M, g.fr));
+    g.k++;
+    if(g.k < F.modos.length){ paso("pausa"); if(navigator.vibrate) navigator.vibrate(30); return; }
+    const ev = evaluarContraste(g.func, g.res);
+    if(R.ses) R.ses.funciones.push({func:g.func, ev:ev});
+    $("msgMain").textContent = ev.ok ? "¡Se nota la diferencia!" : "Exagera más la diferencia";
+    $("msgSub").textContent = ev.lineas.join(" · ");
+    $("arrow").textContent = ev.ok ? "●" : "·";
+    if(navigator.vibrate) navigator.vibrate(ev.ok ? [40,60,40] : 120);
+    paso("resultado");
+  }
+
+  function resumenModo(M, fr){
+    const vals = k => fr.map(x=>x[k]).filter(x=>x !== null && x !== undefined);
+    const cs = vals("c");
+    return {id:M.id, nombre:M.nombre, q:mediana(vals("q")) || 0, b:mediana(vals("b")), c:cs.length >= 5 ? mediana(cs) : null, r:mediana(vals("r")) || 0};
+  }
+
+  function evaluarContraste(func, res){
+    const R0 = {}; res.forEach(x=>{ R0[x.id] = x; });
+    const pct = q => Math.round(q*100) + " %";
+    const dB = (a, b) => (a !== null && b !== null) ? a - b : null;
+    const lineas = [], ev = {ok:true, lineas:lineas, func:func};
+    if(func === "cierre"){
+      const a = R0.aireado, f = R0.fino, gr = R0.grueso;
+      lineas.push("claridad: aireado " + pct(a.q) + ", limpio " + pct(f.q) + ", grueso " + pct(gr.q));
+      ev.difCierre = f.q - a.q;
+      if(ev.difCierre < 0.05){ ev.ok = false; lineas.push("tu «limpio» aún suena aireado"); }
+      else lineas.push("✓ limpio sin aire");
+      if(gr.r > f.r*1.25) lineas.push("✓ grueso con más cuerpo");
+      else lineas.push("el grueso sonó igual de delgado");
+    }else if(func === "laringe"){
+      const n = R0.normal, o = R0.oscuro, br = R0.brillante;
+      const cs = [n.c, o.c, br.c].filter(x=>x !== null);
+      ev.saltoNota = cs.length >= 2 ? Math.max.apply(null, cs) - Math.min.apply(null, cs) : 0;
+      ev.difBrillo = dB(br.b, o.b);
+      if(ev.saltoNota > 50){ ev.ok = false; lineas.push("se te movió la nota (" + Math.round(ev.saltoNota) + " ¢): cambia el timbre, no el tono"); }
+      else lineas.push("✓ misma nota en las tres");
+      if(ev.difBrillo === null || ev.difBrillo < 3){ ev.ok = false; lineas.push("oscuro y brillante sonaron parecido"); }
+      else lineas.push("✓ brillante +" + Math.round(ev.difBrillo) + " dB de brillo que el oscuro");
+    }else if(func === "twang"){
+      ev.difBrillo = dB(R0.twang.b, R0.normal.b);
+      const abierto = dB(R0.twangA.b, R0.normal.b);
+      if(ev.difBrillo === null || ev.difBrillo < 3){ ev.ok = false; lineas.push("el twang casi no cambió el brillo: más bruja, más pequeño"); }
+      else lineas.push("✓ twang +" + Math.round(ev.difBrillo) + " dB de brillo");
+      if(abierto !== null && abierto >= 2) lineas.push("✓ lo conservaste al abrir a «a»");
+      else lineas.push("al abrir a «a» se perdió el brillo");
+    }else{
+      ev.difBrillo = dB(R0.boca.b, R0.nariz.b);
+      if(ev.difBrillo === null || ev.difBrillo < 3){ ev.ok = false; lineas.push("nariz y boca sonaron parecido"); }
+      else lineas.push("✓ la boca abrió +" + Math.round(ev.difBrillo) + " dB de brillo sobre la nariz");
+      lineas.push("claridad en «a»: " + pct(R0.boca.q));
+    }
+    return ev;
+  }
+
   /* ---- bloques guiados: el micrófono como testigo ---- */
   // Si un ejercicio guiado truena, decirlo en pantalla (con el error, para poder
   // arreglarlo) en lugar de quedarse congelado en el último mensaje.
@@ -2667,6 +2879,7 @@
     if(g.tipo === "aire") aireStep(g, d, ts, dt);
     else if(g.tipo === "ee") eeStep(g, d, ts, dt);
     else if(g.tipo === "larga") largaStep(g, d, ts, dt);
+    else if(g.tipo === "contraste") contrasteStep(g, d, ts, dt);
   }
 
   function notaVoz(d){
