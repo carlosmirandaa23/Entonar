@@ -4,17 +4,36 @@ Entrenador de afinación y lectura para la voz, en una sola página (`index.html
 
 ## Rutina de hoy (30 min)
 
-Está enfocada en el **aire** (la toma, cuánto dura y cuánto se escapa por las cuerdas) y en **sostener la nota sin que se mueva**, siguiendo las indicaciones de la maestra. Antes de cada ejercicio la app explica cómo hacerlo y para qué sirve. Después cuenta el tiempo y pasa sola al siguiente.
+Está organizada alrededor de las **4 funciones de la voz**:
 
-| # | Ejercicio | Min | Qué mide la app |
-|---|-----------|-----|-----------------|
-| 1 | **Un solo calentamiento** que cambia cada día: trinos, popote, «mmm» o «ng» | 3 | Afinación del vocalise |
-| 2 | **Toma de aire elegante**: sacar el aire, inhalar en silencio, sostener y soltar en «sss» | 6 | Si se oyó la toma de aire y cuánto dura el «sss» |
-| 3 | **Prueba del aire**: «e» en secreto (susurrada) contra «e» con voz | 2 | El cociente entre las dos duraciones. Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire |
-| 4 | **Ambulancia con «i»** | 3 | Alcance y posible quiebre de registro |
-| 5 | **Nota larga en un solo aliento**, en «i», «a», «o» y «mmm» → vocal | 8 | Duración, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y la claridad aproximada |
-| 6 | **Terceras en una quinta** (do-mi-re-fa-mi-sol-fa-re-do) | 4 | Nivel de memoria |
-| 7 | **Terceras completas: subida y bajada**, hasta la 9.ª y de regreso | 4 | Nivel de memoria |
+1. **Cierre de cuerdas:** con el borde, grueso o aireado.
+2. **Afinación.**
+3. **Altura de la laringe**, incluido el twang.
+4. **Resonadores:** nariz o boca.
+
+Se enfoca en el cierre y el aire, que es lo que más falta trabajar. Cada ejercicio indica qué función entrena, y en la tarjeta hay una explicación breve de las cuatro. Antes de cada ejercicio la app explica cómo hacerlo; después cuenta el tiempo y pasa sola al siguiente.
+
+| # | Ejercicio | Función | Min | Qué mide la app |
+|---|-----------|---------|-----|-----------------|
+| 1 | **Un solo calentamiento** que cambia cada día: trinos, popote, «mmm» o «ng» | Cierre | 3 | Afinación del vocalise |
+| 2 | **Toma de aire elegante**: sacar el aire, inhalar en silencio, sostener y soltar en «sss» | Aire | 5 | Si se oyó la toma de aire y cuánto dura el «sss» |
+| 3 | **Prueba del aire**: «e» en secreto (susurrada) contra «e» con voz | Cierre | 2 | El cociente entre las dos duraciones. Cerca de 1 es buen cierre; arriba de 1.4 indica escape de aire |
+| 4 | **Función del día**: la misma nota cantada de 2 o 3 formas | Rota | 5 | Qué cambió entre las formas (claridad, brillo, afinación y volumen) |
+| 5 | **Ambulancia con «i»** | Afinación | 3 | Alcance y posible quiebre de registro |
+| 6 | **Nota larga en un solo aliento**, en «i», «a», «o» y «mmm» → vocal | Cierre · aire | 6 | Duración, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y la claridad aproximada |
+| 7 | **Terceras en una quinta** | Afinación | 3 | Nivel de memoria |
+| 8 | **Terceras completas: subida y bajada** | Afinación | 3 | Nivel de memoria |
+
+**La función del día** rota así: cierre, laringe, cierre, twang, cierre, resonadores. El cierre sale la mitad de los días.
+
+| Función | Formas que se cantan | Qué revisa la app |
+|---|---|---|
+| Cierre | aireado («a»), limpio con el borde («i»), grueso («e») | Que el limpio tenga más claridad que el aireado, y el grueso más cuerpo |
+| Laringe | normal, oscuro (bostezo), brillante (sonrisa) | Que el brillo cambie sin que se mueva la nota |
+| Twang | normal, twang de bruja («ñe»), twang abierto («a») | Que el twang sume brillo y se conserve al abrir la vocal |
+| Resonadores | nariz («ng»), boca («a»), mitad y mitad («ña») | Que al abrir a la boca suba el brillo |
+
+La claridad y el brillo son aproximados y dependen del micrófono. Lo que cuenta es la diferencia entre una forma y otra.
 
 **Las terceras van por niveles**, por separado en cada patrón:
 
