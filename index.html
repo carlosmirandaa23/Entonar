@@ -474,6 +474,14 @@
         <option value="0.7">70 %</option>
         </select>
         </div>
+      <div class="row" id="canEstiloRow" hidden>
+        <div><label for="canEstilo">Acompañamiento</label><small>«Improvisa» toca distinto cada vez, con la armonía de la partitura.</small></div>
+        <select id="canEstilo">
+        <option value="improvisa">Improvisa</option>
+        <option value="balada">Balada (arpegios)</option>
+        <option value="pad">Acordes largos</option>
+        </select>
+        </div>
       <div class="row" id="canTonoRow" hidden>
         <div><label>Tono</label><small id="canTono"></small></div>
         <div style="display:flex;gap:6px">
@@ -3224,7 +3232,7 @@
   // acordes y melodía) y solo acordes (a tiempo, sin melodía).
   const LS_CAN = "entonar:cancion:v1";
   const ETAPAS_C = ["Notas", "Con guía", "Solo acordes"];
-  const CAN = {cancion:null, transp:null, frase:0, etapas:{}, vel:1, modo:"auto"};
+  const CAN = {cancion:null, transp:null, frase:0, etapas:{}, vel:1, modo:"auto", estilo:"improvisa"};
   const TOL_CAN = 50;   // ¢: en una canción se vale un poco más de margen
 
   function canGuardar(){ try{ localStorage.setItem(LS_CAN, JSON.stringify(CAN)); }catch(e){} }
@@ -3291,15 +3299,132 @@
   }
 
   /* ---- acompañamiento: sin silenciar el micrófono, a volumen bajo ---- */
-  function acordeMidis(nombre, tr){
+  /* ---- acompañamiento: acordes largos, balada o improvisado ---- */
+  // Se arma desde los cifrados de la partitura. «Improvisa» elige en cada acorde
+  // un patrón al azar (arpegio, síncopa, bajo caminante, acordes en los tiempos),
+  // conduce las voces a la posición más cercana, a veces adorna con 9.ª o 4.ª
+  // suspendida y prepara el siguiente acorde con una nota de paso en el bajo.
+  // Todo a volumen bajo y por debajo de la melodía, para no tapar tu voz.
+  const ESTILOS_C = {pad:"Acordes largos", balada:"Balada (arpegios)", improvisa:"Improvisa"};
+
+  function acordeInfo(nombre, tr){
     const m = /^([A-G])([#b]?)(m?)(7?)/.exec(nombre || "");
-    if(!m) return [];
+    if(!m) return null;
     let pc = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + tr;
     pc = ((pc % 12) + 12) % 12;
-    const raiz = 45 + ((pc - 45) % 12 + 12) % 12;   // entre La2 y Sol#3
     const iv = [0, m[3] ? 3 : 4, 7].concat(m[4] ? [10] : []);
-    return [raiz - 12].concat(iv.map(x=>raiz + x));
+    return {pc:pc, menor:!!m[3], iv:iv, bajo:36 + ((pc - 36) % 12 + 12) % 12};   // bajo entre Do2 y Si2
   }
+  function acordeMidis(nombre, tr){
+    const A = acordeInfo(nombre, tr);
+    if(!A) return [];
+    const raiz = 45 + ((A.pc - 45) % 12 + 12) % 12;
+    return [raiz - 12].concat(A.iv.map(x=>raiz + x));
+  }
+
+  // Tres o cuatro notas del acorde entre Do3 y Do4 (debajo de tu melodía), en la
+  // inversión más cercana a la anterior.
+  function voicing(A, prev){
+    const pcs = A.iv.map(x=>(A.pc + x) % 12);
+    let mejor = null, costo = 1e9;
+    for(let r=0; r<pcs.length; r++){
+      const v = [];
+      let n = 48 + ((pcs[r] - 48) % 12 + 12) % 12;
+      for(let k=0; k<pcs.length; k++){
+        const pc = pcs[(r + k) % pcs.length];
+        while(((n % 12) + 12) % 12 !== pc) n++;
+        v.push(n); n++;
+      }
+      const c = prev ? v.reduce((a, x, i)=>a + Math.abs(x - (prev[i] !== undefined ? prev[i] : prev[prev.length-1])), 0)
+                     : Math.abs(v[0] - 50);
+      if(v[v.length-1] <= 60 && c < costo){ costo = c; mejor = v; }
+    }
+    return mejor || pcs.map(pc=>48 + ((pc - 48) % 12 + 12) % 12).sort((a,b)=>a-b);
+  }
+
+  function tonoPiano(m, cuando, dur, vol){
+    if(!ctx) return;
+    if(!master) initSynth();
+    const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    try{ o.setPeriodicWave(pianoWave()); }catch(e){ o.type = "triangle"; }
+    o.frequency.value = midi2freq(m);
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(Math.min(4000, midi2freq(m)*8), cuando);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(300, midi2freq(m)*2), cuando + 0.5);
+    const largo = Math.max(0.25, dur) + 0.3;
+    g.gain.setValueAtTime(0.0001, cuando);
+    g.gain.exponentialRampToValueAtTime(vol, cuando + 0.008);
+    g.gain.exponentialRampToValueAtTime(vol*0.35, cuando + Math.min(0.4, largo*0.4));
+    g.gain.exponentialRampToValueAtTime(0.0001, cuando + largo);
+    o.connect(lp); lp.connect(g); g.connect(master);
+    o.start(cuando); o.stop(cuando + largo + 0.05);
+  }
+
+  function acompanar(f, t0, tr, spb, estilo){
+    const azar = Math.random, humano = ()=> estilo === "improvisa" ? (azar() - 0.5)*0.024 : 0;
+    const VOL = 0.045;
+    const toca = (m, tBeat, dBeat, vol)=>{
+      const t = t0 + tBeat*spb + humano();
+      if(estilo === "pad") tonoSuave(m, t, dBeat*spb, 0.035, "triangle");
+      else tonoPiano(m, Math.max(t0, t), dBeat*spb, (vol || VOL)*(estilo === "improvisa" ? 0.75 + azar()*0.4 : 1));
+    };
+    let prev = null;
+    f.acordes.forEach((a, k)=>{
+      const A = acordeInfo(a[1], tr);
+      if(!A) return;
+      const ini = a[0], fin = k + 1 < f.acordes.length ? f.acordes[k+1][0] : f.duracion, L = fin - ini;
+      if(L <= 0.01) return;
+      const sig = k + 1 < f.acordes.length ? acordeInfo(f.acordes[k+1][1], tr) : null;
+      let v = voicing(A, prev); prev = v;
+      if(estilo === "pad" || L < 1){
+        toca(A.bajo, ini, L, VOL*1.2);
+        v.forEach(m=>toca(m, ini, L));
+        return;
+      }
+      if(estilo === "balada"){
+        toca(A.bajo, ini, Math.min(L, 2), VOL*1.3);
+        const arp = [v[0], v[1], v[2], v[1]];
+        for(let b=0.5, i=0; b < L - 0.01; b += 0.5, i++) toca(arp[i % arp.length], ini + b, 0.6);
+        return;
+      }
+      // improvisa
+      // adorno: 4.ª suspendida que resuelve, o una 9.ª arriba
+      if(L >= 3 && azar() < 0.3){
+        const terc = v.findIndex(m=>((m - A.pc) % 12 + 12) % 12 === (A.menor ? 3 : 4));
+        if(terc >= 0){
+          const sus = v.slice(); sus[terc] = v[terc] + (A.menor ? 2 : 1);
+          sus.forEach(m=>toca(m, ini, 1));
+          toca(A.bajo, ini, 1, VOL*1.3);
+          toca(v[terc], ini + 1, 1);
+        }
+      }else if(L >= 2 && azar() < 0.25){
+        toca(v[v.length-1] + 2 > 62 ? v[0] + 2 : v[v.length-1] + 2, ini + 0.5 + Math.floor(azar()*2), 0.5, VOL*0.8);
+      }
+      const patron = Math.floor(azar()*4);
+      if(patron === 0){            // arpegio de corcheas, sube o baja
+        toca(A.bajo, ini, Math.min(L, 2), VOL*1.3);
+        const orden = azar() < 0.5 ? [v[0], v[1], v[2], v[v.length-1]] : [v[v.length-1], v[1], v[0], v[1]];
+        for(let b=0.5, i=0; b < L - 0.01; b += 0.5, i++) toca(orden[i % orden.length], ini + b, 0.7);
+      }else if(patron === 1){      // acordes sincopados
+        toca(A.bajo, ini, 1.5, VOL*1.3);
+        [0, 1.5, 2.5].filter(b=>b < L - 0.1).forEach(b=>v.forEach(m=>toca(m, ini + b, 0.9, VOL*0.8)));
+        if(L >= 4) toca(A.bajo + 7, ini + 2, 1.5, VOL*1.1);
+      }else if(patron === 2){      // acorde tenido y bajo caminante
+        v.forEach(m=>toca(m, ini, L, VOL*0.7));
+        const pasos = [0, 7, A.menor ? 3 : 4, 12];
+        for(let b=0; b < L - 0.01; b += 1) toca(A.bajo + pasos[b % pasos.length], ini + b, 1, VOL*1.2);
+      }else{                       // bajo en el 1 y acorde en los demás tiempos
+        toca(A.bajo, ini, 1, VOL*1.3);
+        for(let b=1; b < L - 0.01; b += 1) v.forEach(m=>toca(m, ini + b, 0.8, VOL*0.7));
+      }
+      // prepara el siguiente acorde con una nota de paso en el bajo
+      if(sig && L >= 2 && patron !== 2 && azar() < 0.55){
+        const destino = sig.bajo, paso = destino + (azar() < 0.5 ? -1 : 1);
+        toca(paso, fin - 0.5, 0.5, VOL*1.1);
+      }
+    });
+  }
+
   function tonoSuave(m, cuando, dur, vol, tipo){
     if(!ctx) return;
     if(!master) initSynth();
@@ -3326,11 +3451,7 @@
   // Programa acordes (y la melodía si «guia») a partir de un instante del reloj de audio.
   function programarFrase(i, t0, guia){
     const f = CAN.cancion.frases[i], tr = transp(), spb = segPorTiempo();
-    f.acordes.forEach((a, k)=>{
-      const fin = k + 1 < f.acordes.length ? f.acordes[k+1][0] : f.duracion;
-      const dur = Math.max(0.3, (fin - a[0])*spb);
-      acordeMidis(a[1], tr).forEach(m=>tonoSuave(m, t0 + a[0]*spb, dur, 0.035, "triangle"));
-    });
+    acompanar(f, t0, tr, spb, CAN.estilo || "improvisa");
     if(guia) S.seq.forEach(n=>tonoSuave(n.sound, t0 + n.t, Math.max(0.12, n.dur*0.92), 0.09, "triangle"));
   }
 
@@ -3530,7 +3651,7 @@
       ? C.titulo + (C.autor ? " · " + C.autor : "") + " · " + C.frases.length + " frases · "
         + C.frases.filter((f, i)=>dominada(i)).length + " aprendidas"
       : "Sin canción. Carga el archivo que te pasaron (.json).";
-    ["canFraseRow","canModoRow","canVelRow","canTonoRow","canQuitar"].forEach(id=>{ $(id).hidden = !hay; });
+    ["canFraseRow","canModoRow","canVelRow","canEstiloRow","canTonoRow","canQuitar"].forEach(id=>{ $(id).hidden = !hay; });
     if(!hay) return;
     let o = "", sec = "";
     C.frases.forEach((f, i)=>{
@@ -3540,7 +3661,7 @@
     });
     if(sec) o += "</optgroup>";
     $("canFrase").innerHTML = o; $("canFrase").value = String(CAN.frase);
-    $("canModo").value = CAN.modo; $("canVel").value = String(CAN.vel);
+    $("canModo").value = CAN.modo; $("canVel").value = String(CAN.vel); $("canEstilo").value = CAN.estilo || "improvisa";
     const tr = transp();
     $("canTono").textContent = (tr > 0 ? "+" : "") + tr + " semitonos" + (CAN.transp === null ? " (automático)" : "")
       + (tr === -12 ? " · una octava abajo de lo escrito" : tr === 0 ? " · como está escrita" : "");
@@ -3565,6 +3686,7 @@
     $("canFrase").addEventListener("change", e=>{ CAN.frase = Number(e.target.value); canGuardar(); reiniciarSiCancion(); });
     $("canModo").addEventListener("change", e=>{ CAN.modo = e.target.value; canGuardar(); reiniciarSiCancion(); });
     $("canVel").addEventListener("change", e=>{ CAN.vel = Number(e.target.value); canGuardar(); reiniciarSiCancion(); });
+    $("canEstilo").addEventListener("change", e=>{ CAN.estilo = e.target.value; canGuardar(); reiniciarSiCancion(); });
     $("canMenos").addEventListener("click", ()=>{ CAN.transp = transp() - 1; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
     $("canMas").addEventListener("click", ()=>{ CAN.transp = transp() + 1; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
     $("canAuto").addEventListener("click", ()=>{ CAN.transp = null; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
@@ -3582,6 +3704,10 @@
     if(stream) stream.getTracks().forEach(t=>t.stop());
     if(ctx) ctx.close();
     ctx=null; stream=null;
+    // Todo lo que pertenece al contexto de audio cerrado se rehace con el
+    // siguiente: conectar a un nodo viejo falla y deja la app sin sonido.
+    master = null; pWave = null; gWave = null; noiseB = null; jitB = null;
+    analyser = null; analyserRaw = null;
     const eraRutina = R.activa;
     if(eraRutina) rutinaSalir();
     $("startBtn").textContent = "Práctica libre";
