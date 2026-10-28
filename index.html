@@ -3582,6 +3582,10 @@
     if(stream) stream.getTracks().forEach(t=>t.stop());
     if(ctx) ctx.close();
     ctx=null; stream=null;
+    // Todo lo que pertenece al contexto de audio cerrado se rehace con el
+    // siguiente: conectar a un nodo viejo falla y deja la app sin sonido.
+    master = null; pWave = null; gWave = null; noiseB = null; jitB = null;
+    analyser = null; analyserRaw = null;
     const eraRutina = R.activa;
     if(eraRutina) rutinaSalir();
     $("startBtn").textContent = "Práctica libre";
