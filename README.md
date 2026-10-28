@@ -63,6 +63,12 @@ Opciones:
 
 - **Tono:** la app transpone sola para que la canción quepa en tu rango (por ejemplo, una octava abajo de lo escrito para voz grave). También se puede ajustar a mano.
 - **Velocidad:** 70–100 %.
+- **Acompañamiento:** sale de los cifrados de la partitura. Hay tres estilos:
+  - **Improvisa** (el predeterminado): en cada acorde elige al azar un patrón (arpegio, síncopa, bajo caminante o acordes en los tiempos). Conduce las voces a la posición más cercana, a veces adorna con 9.ª o 4.ª suspendida, y prepara el siguiente acorde con una nota de paso en el bajo.
+  - **Balada:** arpegios fijos.
+  - **Acordes largos.**
+
+  Siempre suena a volumen bajo y por debajo de la melodía.
 - **Etapa y frase:** se pueden elegir a mano.
 
 Con una canción cargada, la rutina agrega el bloque **Tu canción** (5 min). En Práctica libre está el modo **Mi canción**. Usa audífonos si puedes, para que el micrófono solo te oiga a ti.
