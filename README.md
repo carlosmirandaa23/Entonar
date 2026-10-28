@@ -2,7 +2,7 @@
 
 Entrenador de afinación y lectura para la voz, en una sola página (`index.html`). El micrófono se procesa en el dispositivo.
 
-## Rutina de hoy (30 min)
+## Rutina de hoy (30 min, 35 con tu canción)
 
 Está organizada alrededor de las **4 funciones de la voz**:
 
@@ -48,6 +48,37 @@ Tres rondas limpias seguidas te suben de nivel; tres rondas con fallos seguidas 
 - Si dejas la rutina a medias, «Continuar rutina» la retoma donde te quedaste.
 - **Práctica libre** conserva todos los modos (lectura, arcade, ancla, vocalises).
 - Los vocalises arrancan en la zona baja-media de tu rango. Si un patrón es casi tan amplio como tu zona cómoda, usan tu rango completo medido para que quede espacio de transponer.
+
+## Mi canción
+
+Para practicar una canción propia, frase por frase. La app **no trae letras ni melodías**: la canción se carga desde un archivo (Ajustes → **Canción**) y se guarda solo en el dispositivo.
+
+Cada frase pasa por tres etapas. Dos intentos buenos seguidos te pasan a la siguiente:
+
+1. **Notas:** escuchas la frase con su ritmo y acordes, y la cantas nota por nota con la letra bajo cada nota.
+2. **Con guía:** después de una cuenta de entrada, la cantas a tiempo junto con la melodía. Cada sílaba se califica (verde, amarillo o rojo) y al final se indican las que quedaron altas, bajas o no se oyeron.
+3. **Solo acordes:** igual que la anterior, pero sin melodía.
+
+Opciones:
+
+- **Tono:** la app transpone sola para que la canción quepa en tu rango (por ejemplo, una octava abajo de lo escrito para voz grave). También se puede ajustar a mano.
+- **Velocidad:** 70–100 %.
+- **Etapa y frase:** se pueden elegir a mano.
+
+Con una canción cargada, la rutina agrega el bloque **Tu canción** (5 min). En Práctica libre está el modo **Mi canción**. Usa audífonos si puedes, para que el micrófono solo te oiga a ti.
+
+**Formato del archivo (`entonar-cancion-1`):**
+
+```json
+{ "formato": "entonar-cancion-1", "titulo": "…", "tempo": 72, "compas": 4,
+  "frases": [ { "texto": "…", "seccion": "…", "pulso": 3, "duracion": 7,
+                "acordes": [[0, "C"], [5, "Em"]],
+                "notas": [[67, 0.5, "sí", 0], [76, 2, "la", 0.5]] } ] }
+```
+
+- Cada nota es `[midi escrito, duración en tiempos, sílaba, inicio en tiempos desde el comienzo de la frase]`.
+- `pulso` es el tiempo del compás en que empieza la frase, contado desde 0.
+- Los acordes van como `[tiempo, nombre]`, con nombres como C, Em, G7 o Dm7.
 
 ## Resumen al terminar
 
