@@ -93,6 +93,7 @@
   .hoyLista li.ok span{color:var(--ok)}
   .hoyLista li.ok span::before{content:"\2713  ";color:var(--ok)}
   #rutBtn{width:100%}
+  #prevBtn{flex:0 0 52px;padding-left:0;padding-right:0}
   .rutHead{margin:0 0 12px}
   .rutTop{display:flex;align-items:center;gap:10px}
   .rutTop b{flex:1;font-family:Georgia,serif;font-weight:400;font-size:18px}
@@ -169,6 +170,7 @@
       <span class="paso" id="rutPaso">1/7</span>
       <b id="rutTit"></b>
       <span class="reloj" id="rutReloj">0:00</span>
+      <button class="mini" id="rutPrev" aria-label="Ejercicio anterior">‹</button>
       <button class="mini" id="rutNext">Siguiente ›</button>
     </div>
     <div class="rutBar"><i id="rutProg"></i></div>
@@ -192,6 +194,7 @@
   <div class="controls">
     <button class="act" id="startBtn">Práctica libre</button>
     <button class="act" id="toneBtn" disabled>Escuchar nota</button>
+    <button class="act" id="prevBtn" hidden aria-label="Frase anterior">‹</button>
     <button class="act" id="skipBtn" disabled>Saltar</button>
   </div>
 
@@ -1575,6 +1578,7 @@
 
   function startPlaying(){
     if(R.pendiente){ R.pendiente = false; rutinaMostrar(); return; }
+    verPrev();
     clearTimers();
     pararBordon();
     if(S.drone === "continuo" && S.play !== "ancla") bordonContinuo();
@@ -2422,6 +2426,7 @@
     const b = R.orden[R.i];
     R.enBloque = false; R.resta = b.min*60000;
     S.mode = "rutinaPausa"; S.guia = null; S.memEtapa = null;
+    $("prevBtn").hidden = true;
     pintarBloque(b);
     $("badge").textContent = "Paso " + (R.i+1) + " de " + R.orden.length;
     $("noteName").innerHTML = "";
@@ -2500,6 +2505,15 @@
     if(navigator.vibrate) navigator.vibrate([40,60,40]);
     R.i++;
     if(R.i >= R.orden.length){ rutinaCompleta(); return; }
+    rutinaMostrar();
+  }
+
+  // Vuelve a la pausa del ejercicio anterior (o al inicio del actual si es el primero),
+  // sin marcar como hecho el que se deja.
+  function rutinaAnterior(){
+    if(!R.activa || R.pendiente) return;
+    if(R.enBloque){ clearTimers(); pararBordon(); guiaCerrar(); }
+    R.i = Math.max(0, R.i - 1);
     rutinaMostrar();
   }
 
@@ -3606,6 +3620,7 @@
     }
     if(CAN.frase >= CAN.cancion.frases.length) CAN.frase = 0;
     S.letra = "si"; S.memEtapa = null;
+    verPrev();
     cancionSeq(CAN.frase);
     const e = etapaActual();
     if(e === 0){
@@ -3636,6 +3651,16 @@
     $("msgSub").textContent = txt || (limpia ? "Una más así y pasas a cantarla a tiempo." : "Otra vez, para afianzarla.");
     S.timers.push(setTimeout(()=>{ if(S.running) cancionEmpezar(); }, 1800));
   }
+
+  function cancionAnterior(){
+    if(!CAN.cancion) return;
+    const n = CAN.cancion.frases.length;
+    CAN.frase = (CAN.frase - 1 + n) % n;
+    canGuardar(); pintarCancion();
+    cancionEmpezar();
+  }
+  // El botón ‹ solo aparece mientras practicas la canción.
+  function verPrev(){ $("prevBtn").hidden = !(S.running && S.play === "cancion"); }
 
   function cancionSaltar(){
     if(!CAN.cancion) return;
@@ -3715,6 +3740,7 @@
     $("toneBtn").textContent = "Escuchar nota";
     $("toneBtn").classList.remove("primary");
     $("toneBtn").disabled = true; $("skipBtn").disabled = true;
+    $("prevBtn").hidden = true;
     $("hoy").hidden = false;
     $("msg").classList.remove("tuned");
     $("msgMain").textContent = main || "Sesión detenida";
@@ -3774,6 +3800,8 @@
   });
   $("rutBtn").addEventListener("click", empezarRutina);
   $("rutNext").addEventListener("click", rutinaSiguiente);
+  $("rutPrev").addEventListener("click", rutinaAnterior);
+  $("prevBtn").addEventListener("click", cancionAnterior);
   $("verResumen").addEventListener("click", ()=>{
     if(!R.datos.resumen) return;
     const box = $("resumen");
