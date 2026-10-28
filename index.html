@@ -219,6 +219,7 @@
       <button type="button" class="tb" data-t="sonido">Sonido</button>
       <button type="button" class="tb" data-t="progreso">Progreso</button>
       <button type="button" class="tb" data-t="clase">Clase</button>
+      <button type="button" class="tb" data-t="cancion">Canción</button>
     </div>
     <div class="tabp on" id="tp-voz">
       <div class="row">
@@ -287,6 +288,7 @@
         <option value="arcade">Arcade</option>
         <option value="ancla">Ancla (memoria de altura)</option>
         <option value="vocaliz">Vocalises (escalas)</option>
+        <option value="cancion">Mi canción</option>
         </select>
         </div>
       <div class="row">
@@ -432,6 +434,53 @@
       <div class="row">
         <div><label>Tono de referencia automático</label><small>Suena al aparecer cada nota.</small></div>
         <div class="sw" id="swAuto" role="switch" aria-checked="false" tabindex="0"><i></i></div>
+        </div>
+    </div>
+    <div class="tabp" id="tp-cancion">
+      <div class="row" style="display:block">
+        <label>Mi canción</label>
+        <small id="canInfo" style="max-width:none">Sin canción.</small>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <label class="mini" for="canArchivo" style="cursor:pointer">Cargar archivo</label>
+          <input type="file" id="canArchivo" accept=".json,application/json" hidden>
+          <button class="mini" id="canQuitar" hidden>Quitar canción</button>
+        </div>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">O pegar el texto del archivo</summary>
+          <textarea id="canPegar" rows="3" placeholder="{ &quot;formato&quot;: &quot;entonar-cancion-1&quot;, … }"></textarea>
+          <button class="mini" id="canPegarBtn" style="margin-top:6px">Cargar texto</button>
+        </details>
+        <small id="canError" style="max-width:none;color:var(--gold)"></small>
+        <small style="max-width:none">La canción se guarda solo en este dispositivo; no se sube a ningún lado.</small>
+        </div>
+      <div class="row" id="canFraseRow" hidden>
+        <div><label for="canFrase">Frase</label><small>La rutina sigue sola con la que toca; aquí puedes elegir otra.</small></div>
+        <select id="canFrase" style="max-width:190px"></select>
+        </div>
+      <div class="row" id="canModoRow" hidden>
+        <div><label for="canModo">Etapa</label><small>Automática avanza cuando lo logras dos veces seguidas.</small></div>
+        <select id="canModo">
+        <option value="auto">Automática</option>
+        <option value="0">Notas</option>
+        <option value="1">Con guía</option>
+        <option value="2">Solo acordes</option>
+        </select>
+        </div>
+      <div class="row" id="canVelRow" hidden>
+        <div><label for="canVel">Velocidad</label></div>
+        <select id="canVel">
+        <option value="1">Normal</option>
+        <option value="0.9">90 %</option>
+        <option value="0.8">80 %</option>
+        <option value="0.7">70 %</option>
+        </select>
+        </div>
+      <div class="row" id="canTonoRow" hidden>
+        <div><label>Tono</label><small id="canTono"></small></div>
+        <div style="display:flex;gap:6px">
+        <button class="mini" id="canMenos">−1</button>
+        <button class="mini" id="canMas">+1</button>
+        <button class="mini" id="canAuto">Auto</button>
+        </div>
         </div>
     </div>
     <div class="tabp" id="tp-clase">
@@ -1137,7 +1186,7 @@
       const hecha = cantando && i < S.seqI;
       const actual = (opts.playIndex===i) || (cantando && i===S.seqI);
       // de memoria: las notas por cantar apenas se ven, para no leerlas
-      const col = hecha ? "#2F8F72" : actual ? "#B08A16" : S.memEtapa === 2 ? "#D9D2BF" : "#1A2135";
+      const col = it.col || (hecha ? "#2F8F72" : actual ? "#B08A16" : S.memEtapa === 2 ? "#D9D2BF" : "#1A2135");
       s += ledgerSvg(x, y, cl);
       if(it.alter!==0)
         s += '<text x="'+(x-26)+'" y="'+(y+6)+'" font-size="20" fill="'+col+'" font-family="serif">'+(it.alter===1?"\u266F":"\u266D")+'</text>';
@@ -1155,7 +1204,7 @@
       s += '<ellipse cx="'+x+'" cy="'+y+'" rx="'+rx+'" ry="'+ry+'" fill="'+col+'" transform="rotate(-20 '+x+' '+y+')"/>';
       if(actual){
         const R = 15, CIRC = 2*Math.PI*R;
-        const p = cantando ? Math.max(0, Math.min(1, S.progress/S.holdMs)) : 1;
+        const p = cantando ? Math.max(0, Math.min(1, S.progress/holdSeq())) : 1;
         s += '<circle cx="'+x+'" cy="'+y+'" r="'+R+'" fill="none" stroke="rgba(176,138,22,.3)" stroke-width="2.6"/>';
         if(p>0) s += '<circle cx="'+x+'" cy="'+y+'" r="'+R+'" fill="none" stroke="'+(cantando?"#2F8F72":"#B08A16")+'" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="'+(p*CIRC).toFixed(1)+' '+CIRC.toFixed(1)+'" transform="rotate(-90 '+x+' '+y+')"/>';
       }
@@ -1346,11 +1395,16 @@
     return S.vuelta ? "Bajada" : "Subida";
   }
   function badgeSeq(){
+    if(S.play === "cancion" && CAN.cancion)
+      return "Frase " + (CAN.frase+1) + " de " + CAN.cancion.frases.length + " · " + ETAPAS_C[etapaActual()];
     const t = tramo();
     if(S.play === "vocaliz")
       return (t ? (t === "Subida" ? "Subida (1 de 2) · después la bajada · " : "Bajada (2 de 2) · ") : "") + CLEF[S.seqClef].label;
     return CLEF[S.seqClef].label + livesText();
   }
+
+  // En una canción las sílabas son cortas: basta con tocarlas afinadas un momento.
+  function holdSeq(){ return S.play === "cancion" ? 400 : S.holdMs; }
 
   function livesText(){ return " · " + "\u2665".repeat(S.lives) + "\u2661".repeat(3-S.lives); }
 
@@ -1386,6 +1440,7 @@
     $("arrow").className = "arrow"; $("arrow").textContent = "\u266A";
     $("hold").style.width = "0%";
     drawSequence({playIndex:-1});
+    if(S.play === "cancion"){ $("skipBtn").textContent = "Siguiente frase"; playCancion(); return; }
     if(S.running) bordonPulso();
     const memoria = S.memEtapa === 2;   // solo suena la primera: el resto, de memoria
     const t = tramo();
@@ -1432,12 +1487,12 @@
       if(m!==null && Math.abs(cents) > 90) S.wrongMs += dt; else S.wrongMs = Math.max(0, S.wrongMs - dt);
     }
 
-    $("hold").style.width = Math.min(100, S.progress/S.holdMs*100).toFixed(0)+"%";
+    $("hold").style.width = Math.min(100, S.progress/holdSeq()*100).toFixed(0)+"%";
     drawSequence({});
     say(f, m, cents, tuned);
     $("badge").textContent = badgeSeq();
 
-    if(S.progress >= S.holdMs){
+    if(S.progress >= holdSeq()){
       if(navigator.vibrate) navigator.vibrate(25);
       ding();
       cerrarNota(cents, obj.sound);
@@ -1452,6 +1507,7 @@
   function arcadeWin(){
     clearTimers();
     S.mode = "arcadeDone";
+    if(S.play === "cancion"){ cancionTrasNotas(); return; }
     S.round++; S.streak++;
     if(S.letra === "memoria") S.letraRondas++;
     const subio = S.memEtapa !== null ? tercerasAvance(S.rondaLimpia) : 0;
@@ -1477,7 +1533,7 @@
   function arcadeError(m){
     clearTimers();
     S.mode = "arcadeDone";
-    if(S.play !== "vocaliz") S.lives--;
+    if(S.play !== "vocaliz" && S.play !== "cancion") S.lives--;
     S.rondaLimpia = false;
     S.wrongMs = 0; S.progress = 0; hist.length = 0; resetNota(); S.atq = null;
     if(S.seq[S.seqI]) regNota(S.seq[S.seqI].sound, 0, true);
@@ -1519,6 +1575,11 @@
       $("stDone").textContent = S.anclaLog.length;
       if(S.tess){ S.anchor = Math.max(S.tess.lo, Math.min(S.tess.hi, S.anchor)); }
       anclaNueva();
+      return;
+    }
+    if(S.play === "cancion"){
+      $("stDoneLbl").textContent = "notas logradas";
+      cancionEmpezar();
       return;
     }
     if(S.play === "vocaliz"){
@@ -1570,6 +1631,8 @@
     if(S.mode === "scanDown" || S.mode === "scanUp"){ scanStep(d.f, ts, dt); return; }
     if(S.mode === "arcadePlay" || S.mode === "arcadeDone"){ hist.length = 0; return; }
     if(S.mode === "arcadeSing"){ arcadeStep(d.f, ts, dt); return; }
+    if(S.mode === "canKaraoke"){ karaokeStep(d, ts); return; }
+    if(S.mode === "canResultado"){ hist.length = 0; return; }
     if(S.mode === "echoWait"){
       hist.length = 0;
       const falta = Math.max(0, S.echoAt - ts);
@@ -2245,7 +2308,17 @@
       bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 3, silabasDe("terceras5") + "."),
       bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 3,
         "son dos renglones. Primero la SUBIDA: " + silabasDe("terceras") + ". Al terminarla aparece la BAJADA: " + silabasDe("tercerasB") + ". Arriba a la izquierda dice en cuál vas.")
-    ];
+    ].concat(CAN.cancion ? [{
+      id:"cancion", tipo:"app", min:5, fn:"Canción", titulo:"Tu canción: " + CAN.cancion.titulo,
+      porque:"Llevar lo que entrenas a la música. Cada frase pasa por tres etapas: aprender sus notas, cantarla a tiempo con la melodía de guía y cantarla solo con los acordes. Dos intentos buenos seguidos te pasan a la siguiente.",
+      pasos:[
+        "Notas: escuchas la frase con su ritmo y la cantas nota por nota, diciendo la letra.",
+        "Con guía: después de la cuenta de entrada, cántala a tiempo junto con la melodía. Cada sílaba se pinta de verde, amarillo o rojo.",
+        "Solo acordes: igual, pero sin la melodía. Ahí se ve si ya te la sabes.",
+        "Usa audífonos si puedes: así el micrófono solo te oye a ti. Si va muy rápido, baja la velocidad en Ajustes → Canción.",
+        "Aplica lo de hoy: toma el aire en silencio antes de cada frase y que el sonido salga limpio, sin aire."
+      ],
+      cfg:{play:"cancion", letra:"si"}}] : []);
   }
 
   function pintarHoy(){
@@ -2464,7 +2537,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[]}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[], cancion:[]}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2607,6 +2680,13 @@
           : func === "laringe" ? "Exagera el bostezo (voz de oso) y la sonrisa (voz de caricatura)."
           : "En «ng» la lengua toca el paladar atrás; en «a» bájala del todo.");
       }
+    }
+    if(R.ses.cancion.length){
+      const CX = R.ses.cancion, mejor = Math.max.apply(null, CX.map(x=>x.nota));
+      const prom = promedio(CX.map(x=>x.nota));
+      if(prom >= 0.6) add(bien, 1.6, "Tu canción: " + CX.length + (CX.length === 1 ? " intento" : " intentos") + " a tiempo; el mejor quedó " + Math.round(mejor*100) + " % afinado.");
+      else add(mal, 1.4, "En tu canción varias sílabas quedaron fuera (" + Math.round(prom*100) + " % afinado en promedio).",
+        "Baja la velocidad en Ajustes → Canción, o elige el modo «Notas» para repasar esa frase sin prisa.");
     }
     Object.keys(R.ses.terceras).forEach(k=>{
       const t = R.ses.terceras[k], nom = k === "terceras5" ? "Terceras en una quinta" : "Terceras completas";
@@ -3137,6 +3217,362 @@
     $("msgSub").textContent = cubre();
   }
 
+  /* ---------------- mi canción ---------------- */
+  // La canción vive solo en este dispositivo (se carga desde un archivo): la app
+  // no trae letras ni melodías. Cada frase se aprende en tres etapas: notas
+  // (escuchas con ritmo y la cantas nota por nota), con guía (a tiempo, con
+  // acordes y melodía) y solo acordes (a tiempo, sin melodía).
+  const LS_CAN = "entonar:cancion:v1";
+  const ETAPAS_C = ["Notas", "Con guía", "Solo acordes"];
+  const CAN = {cancion:null, transp:null, frase:0, etapas:{}, vel:1, modo:"auto"};
+  const TOL_CAN = 50;   // ¢: en una canción se vale un poco más de margen
+
+  function canGuardar(){ try{ localStorage.setItem(LS_CAN, JSON.stringify(CAN)); }catch(e){} }
+  function canCargar(){
+    try{
+      const d = JSON.parse(localStorage.getItem(LS_CAN) || "null");
+      if(d && d.cancion) Object.assign(CAN, d);
+    }catch(e){}
+  }
+
+  function validarCancion(o){
+    if(!o || o.formato !== "entonar-cancion-1") throw new Error("No es un archivo de canción de Entonar.");
+    if(!Array.isArray(o.frases) || !o.frases.length) throw new Error("La canción no tiene frases.");
+    o.frases.forEach((f, i)=>{
+      if(!Array.isArray(f.notas) || !f.notas.length) throw new Error("La frase " + (i+1) + " no tiene notas.");
+      f.notas.forEach(n=>{
+        if(typeof n[0] !== "number" || typeof n[1] !== "number" || typeof n[3] !== "number") throw new Error("Nota mal formada en la frase " + (i+1) + ".");
+      });
+      if(!Array.isArray(f.acordes)) f.acordes = [];
+      if(typeof f.pulso !== "number") f.pulso = 0;
+      if(typeof f.duracion !== "number") f.duracion = f.notas[f.notas.length-1][3] + f.notas[f.notas.length-1][1];
+    });
+    if(typeof o.tempo !== "number") o.tempo = 80;
+    return o;
+  }
+
+  function instalarCancion(o){
+    CAN.cancion = validarCancion(o);
+    CAN.transp = null; CAN.frase = 0; CAN.etapas = {};
+    canGuardar(); pintarCancion(); pintarHoy();
+  }
+
+  // Transposición automática: la que mejor cabe en tu zona cómoda, prefiriendo
+  // la octava natural de tu voz (una abajo de lo escrito si tu voz es grave).
+  function transpAuto(){
+    const C = CAN.cancion; if(!C) return 0;
+    let lo = 999, hi = -999;
+    C.frases.forEach(f=>f.notas.forEach(n=>{ lo = Math.min(lo, n[0]); hi = Math.max(hi, n[0]); }));
+    // Una canción abarca más que un vocalise: se acomoda en tu rango completo medido.
+    const T = S.tessFull || S.tess || {lo:48, hi:64};
+    const pref = (T.lo + T.hi)/2 < 62 ? -12 : 0;
+    let mejor = 0, puntos = 1e9;
+    for(let t=-24; t<=12; t++){
+      const fuera = Math.max(0, T.lo - (lo + t)) + Math.max(0, (hi + t) - T.hi);
+      const p = fuera*10 + Math.abs(t - pref);
+      if(p < puntos){ puntos = p; mejor = t; }
+    }
+    return mejor;
+  }
+  const transp = () => CAN.transp === null ? transpAuto() : CAN.transp;
+  const segPorTiempo = () => 60/((CAN.cancion ? CAN.cancion.tempo : 80)*CAN.vel);
+
+  function etapaDe(i){ return CAN.etapas[i] || (CAN.etapas[i] = {e:0, ok:0}); }
+  function dominada(i){ return !!CAN.etapas[i] && CAN.etapas[i].e >= 3; }
+
+  // Arma la secuencia de la frase en el formato del motor de vocalises.
+  function cancionSeq(i){
+    const f = CAN.cancion.frases[i], tr = transp(), spb = segPorTiempo();
+    const ms = f.notas.map(n=>n[0] + tr);
+    const cl = claveDe(Math.round((Math.min.apply(null, ms) + Math.max.apply(null, ms))/2));
+    S.seqClef = cl;
+    S.seq = f.notas.map(n=>Object.assign(itemDeMidi(n[0] + tr, cl), {sil:n[2], t:n[3]*spb, dur:n[1]*spb}));
+    S.key = ((tr % 12) + 12) % 12;   // la canción está escrita en Do
+  }
+
+  /* ---- acompañamiento: sin silenciar el micrófono, a volumen bajo ---- */
+  function acordeMidis(nombre, tr){
+    const m = /^([A-G])([#b]?)(m?)(7?)/.exec(nombre || "");
+    if(!m) return [];
+    let pc = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + tr;
+    pc = ((pc % 12) + 12) % 12;
+    const raiz = 45 + ((pc - 45) % 12 + 12) % 12;   // entre La2 y Sol#3
+    const iv = [0, m[3] ? 3 : 4, 7].concat(m[4] ? [10] : []);
+    return [raiz - 12].concat(iv.map(x=>raiz + x));
+  }
+  function tonoSuave(m, cuando, dur, vol, tipo){
+    if(!ctx) return;
+    if(!master) initSynth();
+    const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    o.type = tipo || "triangle"; o.frequency.value = midi2freq(m);
+    lp.type = "lowpass"; lp.frequency.value = 1400;
+    g.gain.setValueAtTime(0.0001, cuando);
+    g.gain.exponentialRampToValueAtTime(vol, cuando + 0.03);
+    g.gain.setValueAtTime(vol, cuando + Math.max(0.05, dur - 0.08));
+    g.gain.exponentialRampToValueAtTime(0.0001, cuando + dur + 0.15);
+    o.connect(lp); lp.connect(g); g.connect(master);
+    o.start(cuando); o.stop(cuando + dur + 0.2);
+  }
+  function clic(cuando, fuerte){
+    if(!ctx) return;
+    if(!master) initSynth();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = fuerte ? 1500 : 1000;
+    g.gain.setValueAtTime(0.0001, cuando);
+    g.gain.exponentialRampToValueAtTime(0.12, cuando + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, cuando + 0.06);
+    o.connect(g); g.connect(master); o.start(cuando); o.stop(cuando + 0.08);
+  }
+  // Programa acordes (y la melodía si «guia») a partir de un instante del reloj de audio.
+  function programarFrase(i, t0, guia){
+    const f = CAN.cancion.frases[i], tr = transp(), spb = segPorTiempo();
+    f.acordes.forEach((a, k)=>{
+      const fin = k + 1 < f.acordes.length ? f.acordes[k+1][0] : f.duracion;
+      const dur = Math.max(0.3, (fin - a[0])*spb);
+      acordeMidis(a[1], tr).forEach(m=>tonoSuave(m, t0 + a[0]*spb, dur, 0.035, "triangle"));
+    });
+    if(guia) S.seq.forEach(n=>tonoSuave(n.sound, t0 + n.t, Math.max(0.12, n.dur*0.92), 0.09, "triangle"));
+  }
+
+  /* ---- etapa 1: escuchar con ritmo y cantar nota por nota ---- */
+  function playCancion(){
+    const f = CAN.cancion.frases[CAN.frase], spb = segPorTiempo();
+    $("msgMain").textContent = "Escucha: «" + f.texto + "»";
+    $("msgSub").textContent = "Con su ritmo. Después la cantas nota por nota.";
+    const t0 = ctx.currentTime + 0.4;
+    programarFrase(CAN.frase, t0, false);
+    S.seq.forEach((n, i)=>{
+      S.timers.push(setTimeout(()=>{
+        S.playI = i;
+        drawSequence({playIndex:i});
+        sound(n.sound, Math.max(150, n.dur*1000*0.9));
+      }, 400 + n.t*1000));
+    });
+    S.timers.push(setTimeout(()=>{
+      S.mode = "arcadeSing"; S.seqI = 0; S.progress = 0; S.wrongMs = 0; S.atq = null;
+      S.lastGoodTs = 0; hist.length = 0;
+      drawSequence({});
+      $("msgMain").textContent = "Ahora cántala nota por nota";
+      $("msgSub").textContent = "Diciendo la letra. Sostén cada sílaba hasta que avance.";
+      if(navigator.vibrate) navigator.vibrate(40);
+    }, 400 + f.duracion*spb*1000 + 500));
+  }
+
+  /* ---- etapas 2 y 3: a tiempo, calificando cada sílaba ---- */
+  function karaokeEmpezar(guia){
+    clearTimers();
+    cancionSeq(CAN.frase);
+    S.seq.forEach(n=>{ n.col = null; n.fr = 0; n.ok = 0; n.voz = 0; n.suma = 0; });
+    const f = CAN.cancion.frases[CAN.frase], spb = segPorTiempo();
+    // Cuenta de entrada: un compás completo antes del compás donde empieza la frase.
+    const cuenta = [];
+    for(let tau = -f.pulso - 4; tau < -0.01; tau += 1) cuenta.push(tau);
+    const ahora = ctx.currentTime + 0.3, t0a = ahora - cuenta[0]*spb;   // reloj de audio del tiempo 0
+    cuenta.forEach(tau=>{
+      const enCompas = ((tau + f.pulso) % 4 + 4) % 4;
+      clic(t0a + tau*spb, Math.abs(enCompas) < 0.01);
+    });
+    programarFrase(CAN.frase, t0a, guia);
+    const lat = (ctx.outputLatency || ctx.baseLatency || 0)*1000;   // lo que tarda en oírse
+    S.kar = {t0:performance.now() + (t0a - ctx.currentTime)*1000 + lat, fin:f.duracion*spb, guia:guia, idx:-1, dib:0};
+    S.mode = "canKaraoke"; hist.length = 0;
+    $("badge").textContent = badgeSeq();
+    $("toneBtn").textContent = "Otra vez"; $("skipBtn").textContent = "Siguiente frase";
+    $("hold").style.width = "0%";
+    drawSequence({playIndex:-1});
+  }
+
+  function karaokeStep(d, ts){
+    const K = S.kar, pos = (performance.now() - K.t0)/1000;
+    const f = CAN.cancion.frases[CAN.frase];
+    if(pos < 0){
+      const falta = Math.ceil(-pos/segPorTiempo());
+      $("msgMain").textContent = "Prepárate… " + falta;
+      $("msgSub").textContent = "«" + f.texto + "»" + (K.guia ? " · con la melodía de guía" : " · solo acordes");
+      $("arrow").className = "arrow"; $("arrow").textContent = "·";
+      return;
+    }
+    if(pos > K.fin + 0.5){ karaokeFin(); return; }
+    let i = -1;
+    for(let k=0;k<S.seq.length;k++){ const n = S.seq[k]; if(pos >= n.t && pos < n.t + n.dur){ i = k; break; } }
+    let c = null;
+    if(d.f > 0){ hist.push(d.f); if(hist.length > 4) hist.shift(); } else hist.length = 0;
+    if(i >= 0){
+      const n = S.seq[i];
+      if(pos - n.t > 0.12 && n.t + n.dur - pos > 0.04){
+        n.fr++;
+        if(d.f > 0){
+          c = (freq2midi(median3()) - n.sound)*100;
+          c = ((c + 600) % 1200 + 1200) % 1200 - 600;   // una octava arriba o abajo cuenta como la nota
+          n.voz++; n.suma += c;
+          if(Math.abs(c) <= TOL_CAN) n.ok++;
+        }
+      }
+    }
+    if(i !== K.idx || ts - K.dib > 120){
+      if(i !== K.idx && K.idx >= 0) colorNota(S.seq[K.idx]);
+      K.idx = i; K.dib = ts;
+      drawSequence({playIndex:i});
+    }
+    const n = i >= 0 ? S.seq[i] : null;
+    $("msgMain").textContent = n ? "«" + n.sil + "»" : "…";
+    $("msgSub").textContent = "«" + f.texto + "»";
+    const ok = c !== null && Math.abs(c) <= TOL_CAN;
+    $("msg").classList.toggle("tuned", ok);
+    $("arrow").className = "arrow" + (c !== null && !ok ? " on" : "");
+    $("arrow").textContent = c === null ? "·" : ok ? "●" : c < 0 ? "↑" : "↓";
+    $("hold").style.width = Math.min(100, pos/K.fin*100).toFixed(0) + "%";
+  }
+
+  function colorNota(n){
+    const p = n.fr ? n.ok/n.fr : 0;
+    n.col = p >= 0.6 ? "#2F8F72" : p >= 0.3 ? "#B08A16" : "#B4542F";
+  }
+
+  function karaokeFin(){
+    S.seq.forEach(colorNota);
+    let peso = 0, bien = 0;
+    S.seq.forEach(n=>{ peso += n.dur; bien += n.dur*(n.fr ? n.ok/n.fr : 0); });
+    const nota = peso ? bien/peso : 0;
+    const malas = S.seq.filter(n=>n.fr && n.ok/n.fr < 0.5)
+      .map(n=>"«" + n.sil + "» " + (!n.voz ? "no se oyó" : n.suma/n.voz < 0 ? "baja" : "alta"));
+    S.mode = "canResultado";
+    drawSequence({playIndex:-1});
+    const aprobada = nota >= (S.kar.guia ? 0.75 : 0.8);
+    $("msg").classList.toggle("tuned", aprobada);
+    $("msgMain").textContent = Math.round(nota*100) + " % afinada" + (aprobada ? " — ¡bien!" : "");
+    $("msgSub").textContent = malas.length ? "A cuidar: " + malas.slice(0, 4).join(" · ") : "Todas las sílabas en su lugar.";
+    $("arrow").textContent = aprobada ? "●" : "·";
+    if(R.ses) R.ses.cancion.push({frase:CAN.frase, nota:nota, guia:S.kar.guia});
+    const sube = cancionAvance(aprobada);
+    if(sube) $("msgMain").textContent += sube;
+    if(R.activa){
+      S.timers.push(setTimeout(()=>{ if(S.running && S.mode === "canResultado") cancionEmpezar(); }, 5500));
+    }
+  }
+
+  // Avance de etapa de la frase actual: dos aprobadas seguidas suben de etapa.
+  function cancionAvance(aprobada){
+    const E = etapaDe(CAN.frase);
+    if(!aprobada){ E.ok = 0; canGuardar(); return ""; }
+    E.ok++;
+    let txt = "";
+    if(E.ok >= 2){
+      E.e++; E.ok = 0;
+      if(E.e >= 3){
+        txt = " Frase aprendida.";
+        const sig = CAN.cancion.frases.findIndex((f, k)=>k > CAN.frase && !dominada(k));
+        if(sig >= 0) CAN.frase = sig;
+      }else txt = " Siguiente etapa: " + ETAPAS_C[E.e].toLowerCase() + ".";
+    }
+    canGuardar(); pintarCancion();
+    return txt;
+  }
+
+  function etapaActual(){
+    if(CAN.modo !== "auto") return Number(CAN.modo);
+    const e = etapaDe(CAN.frase).e;
+    return e >= 3 ? 2 : e;
+  }
+
+  // Punto de entrada: la frase y etapa que tocan.
+  function cancionEmpezar(){
+    clearTimers();
+    if(!CAN.cancion){
+      $("msgMain").textContent = "Todavía no hay canción cargada";
+      $("msgSub").textContent = "Cárgala en Ajustes → Canción.";
+      return;
+    }
+    if(CAN.frase >= CAN.cancion.frases.length) CAN.frase = 0;
+    S.letra = "si"; S.memEtapa = null;
+    cancionSeq(CAN.frase);
+    const e = etapaActual();
+    if(e === 0){
+      S.rondaLimpia = true; S.lives = 3;
+      S.mode = "arcadePlay"; S.playI = -1; S.progress = 0;
+      $("badge").textContent = badgeSeq();
+      $("toneBtn").textContent = "Repetir"; $("skipBtn").textContent = "Siguiente frase";
+      $("arrow").className = "arrow"; $("arrow").textContent = "♪";
+      $("hold").style.width = "0%";
+      drawSequence({playIndex:-1});
+      playCancion();
+      return;
+    }
+    karaokeEmpezar(e === 1);
+  }
+
+  // Al completar la frase nota por nota (motor de vocalises).
+  function cancionTrasNotas(){
+    const limpia = S.rondaLimpia;
+    let txt = "";
+    if(CAN.modo === "auto"){
+      const E = etapaDe(CAN.frase);
+      if(limpia){ E.ok++; if(E.ok >= 2){ E.e = 1; E.ok = 0; txt = "Siguiente etapa: cantarla a tiempo, con guía."; } }
+      else E.ok = 0;
+      canGuardar(); pintarCancion();
+    }
+    $("msgMain").textContent = limpia ? "¡Frase completa sin fallar!" : "Frase completa";
+    $("msgSub").textContent = txt || (limpia ? "Una más así y pasas a cantarla a tiempo." : "Otra vez, para afianzarla.");
+    S.timers.push(setTimeout(()=>{ if(S.running) cancionEmpezar(); }, 1800));
+  }
+
+  function cancionSaltar(){
+    if(!CAN.cancion) return;
+    CAN.frase = (CAN.frase + 1) % CAN.cancion.frases.length;
+    canGuardar(); pintarCancion();
+    cancionEmpezar();
+  }
+
+  /* ---- ajustes: cargar, frase, modo, velocidad y tono ---- */
+  function pintarCancion(){
+    const C = CAN.cancion, hay = !!C;
+    $("canInfo").textContent = hay
+      ? C.titulo + (C.autor ? " · " + C.autor : "") + " · " + C.frases.length + " frases · "
+        + C.frases.filter((f, i)=>dominada(i)).length + " aprendidas"
+      : "Sin canción. Carga el archivo que te pasaron (.json).";
+    ["canFraseRow","canModoRow","canVelRow","canTonoRow","canQuitar"].forEach(id=>{ $(id).hidden = !hay; });
+    if(!hay) return;
+    let o = "", sec = "";
+    C.frases.forEach((f, i)=>{
+      if(f.seccion && f.seccion !== sec){ if(sec) o += "</optgroup>"; sec = f.seccion; o += '<optgroup label="' + esc(sec) + '">'; }
+      const E = CAN.etapas[i] || {e:0};
+      o += '<option value="' + i + '">' + (i+1) + ". " + esc(f.texto) + (E.e >= 3 ? " ✓" : E.e ? " · " + ETAPAS_C[E.e].toLowerCase() : "") + "</option>";
+    });
+    if(sec) o += "</optgroup>";
+    $("canFrase").innerHTML = o; $("canFrase").value = String(CAN.frase);
+    $("canModo").value = CAN.modo; $("canVel").value = String(CAN.vel);
+    const tr = transp();
+    $("canTono").textContent = (tr > 0 ? "+" : "") + tr + " semitonos" + (CAN.transp === null ? " (automático)" : "")
+      + (tr === -12 ? " · una octava abajo de lo escrito" : tr === 0 ? " · como está escrita" : "");
+  }
+
+  function reiniciarSiCancion(){ if(S.running && S.play === "cancion") cancionEmpezar(); }
+
+  (function ajustesCancion(){
+    $("canArchivo").addEventListener("change", e=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      f.text().then(t=>{
+        try{ instalarCancion(JSON.parse(t)); $("canError").textContent = "¡Listo! Ya está en la rutina y en Práctica → Modo «Mi canción»."; }
+        catch(err){ $("canError").textContent = "No se pudo cargar: " + err.message; }
+      });
+      e.target.value = "";
+    });
+    $("canPegarBtn").addEventListener("click", ()=>{
+      try{ instalarCancion(JSON.parse($("canPegar").value)); $("canPegar").value = ""; $("canError").textContent = "¡Listo! Ya está en la rutina y en Práctica → Modo «Mi canción»."; }
+      catch(err){ $("canError").textContent = "No se pudo cargar: " + err.message; }
+    });
+    $("canFrase").addEventListener("change", e=>{ CAN.frase = Number(e.target.value); canGuardar(); reiniciarSiCancion(); });
+    $("canModo").addEventListener("change", e=>{ CAN.modo = e.target.value; canGuardar(); reiniciarSiCancion(); });
+    $("canVel").addEventListener("change", e=>{ CAN.vel = Number(e.target.value); canGuardar(); reiniciarSiCancion(); });
+    $("canMenos").addEventListener("click", ()=>{ CAN.transp = transp() - 1; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
+    $("canMas").addEventListener("click", ()=>{ CAN.transp = transp() + 1; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
+    $("canAuto").addEventListener("click", ()=>{ CAN.transp = null; canGuardar(); pintarCancion(); reiniciarSiCancion(); });
+    $("canQuitar").addEventListener("click", ()=>{
+      CAN.cancion = null; CAN.etapas = {}; CAN.frase = 0; canGuardar(); pintarCancion(); pintarHoy();
+    });
+  })();
+
   /* ---------------- controles ---------------- */
   function detener(main, sub){
     S.running = false;
@@ -3228,12 +3664,14 @@
     if(S.mode==="anchor" || S.mode==="measurePause"){ saltarMedicion(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
     if(S.mode==="arcadeSing" || S.mode==="arcadePlay"){ playSequence(); return; }
+    if(S.mode==="canKaraoke" || S.mode==="canResultado"){ cancionEmpezar(); return; }
     playTone();
   });
   $("skipBtn").addEventListener("click", ()=>{
     if(S.mode==="rutinaPausa" || S.mode==="guia"){ rutinaSiguiente(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.play==="ancla" && S.tess){ anclaNueva(); return; }
+    if(S.play==="cancion" && S.tess){ cancionSaltar(); return; }
     if(S.play==="vocaliz" && S.tess){ vocalizSiguiente(); return; }
     if(S.play==="arcade" && S.tess){ S.lives = 3; arcadeNewRound(); return; }
     if(S.mode!=="practice") return;
@@ -3429,6 +3867,8 @@
   $("badge").textContent = "Listo";
   cargar();
   rutCargar();
+  canCargar();
+  pintarCancion();
   if(R.datos.notas === null) R.datos.notas = NOTAS_CLASE;
   $("notasClase").value = R.datos.notas;
   pintarHoy();
