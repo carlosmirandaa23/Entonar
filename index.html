@@ -118,6 +118,14 @@
   .clase b{font-size:12px;color:var(--gold);letter-spacing:.3px}
   .clase ul{margin:4px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45}
   textarea{width:100%;margin-top:8px;background:var(--ink-2);color:var(--text);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;font:inherit;font-size:14px;resize:vertical}
+  .medidores{margin-top:12px;display:grid;gap:7px}
+  .md{display:grid;grid-template-columns:62px 1fr 118px;align-items:center;gap:10px;font-size:12.5px}
+  .md span{color:var(--muted)}
+  .md b{font-weight:500;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .mdb{height:8px;background:var(--ink-2);border-radius:99px;overflow:hidden;position:relative}
+  .mdb i{display:block;height:100%;width:0;background:var(--gold);transition:width .15s linear}
+  .mdb em{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ok)}
+  .histo{width:100%;display:block;color:var(--muted)}
   .resumen{margin-top:16px;border:1px solid var(--gold);border-radius:8px;padding:14px}
   .resumen h3{font-family:Georgia,serif;font-weight:400;font-size:19px;margin:0 0 4px}
   .resumen .rsSub{color:var(--muted);font-size:12px;margin:0 0 10px}
@@ -190,6 +198,12 @@
     </div>
   </div>
   <div class="holdbar"><i id="hold"></i></div>
+  <div class="medidores" id="medidores" hidden>
+    <div class="md"><span>Frase</span><div class="mdb"><i id="mdFraseI"></i></div><b id="mdFraseV">—</b></div>
+    <div class="md"><span>Ring</span><div class="mdb"><i id="mdRingI"></i><em style="left:72%" title="Meta −23 dB"></em></div><b id="mdRingV">—</b></div>
+    <div class="md"><span>Vibrato</span><div class="mdb"><i id="mdVibI"></i></div><b id="mdVibV">—</b></div>
+  </div>
+  <audio id="anAudio" preload="auto"></audio>
 
   <div class="controls">
     <button class="act" id="startBtn">Práctica libre</button>
@@ -223,6 +237,7 @@
       <button type="button" class="tb" data-t="progreso">Progreso</button>
       <button type="button" class="tb" data-t="clase">Clase</button>
       <button type="button" class="tb" data-t="cancion">Canción</button>
+      <button type="button" class="tb" data-t="analisis">Análisis</button>
     </div>
     <div class="tabp on" id="tp-voz">
       <div class="row">
@@ -292,6 +307,7 @@
         <option value="ancla">Ancla (memoria de altura)</option>
         <option value="vocaliz">Vocalises (escalas)</option>
         <option value="cancion">Mi canción</option>
+        <option value="analisis">Análisis libre (cantar sobre tu pista)</option>
         </select>
         </div>
       <div class="row">
@@ -494,6 +510,32 @@
         </div>
         </div>
     </div>
+    <div class="tabp" id="tp-analisis">
+      <div class="row">
+        <div><label for="anRef">Referencia de afinación</label><small id="anRefV">0 ¢ · La4 = 440.0 Hz</small></div>
+        <div style="display:flex;gap:6px;align-items:center">
+        <input type="range" id="anRef" min="-50" max="50" step="1" value="0" style="width:120px">
+        <button class="mini" id="anRef440">440</button>
+        </div>
+        </div>
+      <div class="row" style="display:block">
+        <label>Tu pista de karaoke</label>
+        <small style="max-width:none">Para cantar sobre ella en «Análisis libre» y en las frases ligadas. La app estima en qué afinación está para no marcarte errores falsos. Se queda solo en este dispositivo.</small>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <label class="mini" for="anPista" style="cursor:pointer">Cargar pista</label>
+          <input type="file" id="anPista" accept="audio/*" hidden>
+        </div>
+        <div id="anPistaRow" hidden style="margin-top:8px">
+          <small id="anPistaInfo" style="max-width:none"></small>
+          <button class="mini" id="anUsarPista" hidden style="margin-top:6px">Usar su afinación como referencia</button>
+        </div>
+        </div>
+      <div class="row" style="display:block">
+        <label for="anTramos">Tramos a revisar con la maestra</label>
+        <small style="max-width:none">Salen en el reporte para imprimir.</small>
+        <textarea id="anTramos" rows="3"></textarea>
+        </div>
+    </div>
     <div class="tabp" id="tp-clase">
       <div class="row" style="display:block">
         <label for="notasClase">Indicaciones de tu maestra</label>
@@ -536,8 +578,11 @@
     const oct = Math.floor(dia/7), i = dia - oct*7, L = LETTERS[i];
     return {dia:dia, alter:alter||0, letter:L, oct:oct, midi: 12*(oct+1)+SEMI[L]+(alter||0)};
   }
-  const midi2freq = m => 440*Math.pow(2,(m-69)/12);
-  const freq2midi = f => 69 + 12*Math.log2(f/440);
+  // Referencia de afinación en cents respecto a La4 = 440 Hz (pistas que no
+  // están a 440). Afecta lo que se mide y lo que suena.
+  let refC = 0;
+  const midi2freq = m => 440*Math.pow(2,(m - 69 + refC/100)/12);
+  const freq2midi = f => 69 + 12*Math.log2(f/440) - refC/100;
   function nameOf(n){ return ES[n.letter] + (n.alter===1?"♯":n.alter===-1?"♭":""); }
   function midiLabel(m){
     const r = Math.round(m), oct = Math.floor(r/12)-1;
@@ -886,7 +931,7 @@
   }
 
   /* ---------------- audio ---------------- */
-  let ctx=null, analyser=null, buf=null, stream=null, raf=0, analyserRaw=null, bufRaw=null;
+  let ctx=null, analyser=null, buf=null, stream=null, raf=0, analyserRaw=null, bufRaw=null, analyserFino=null, bufFino=null;
   const hist = [];
   let mBuf = [];
 
@@ -907,6 +952,10 @@
     analyser = ctx.createAnalyser(); analyser.fftSize = 4096;
     buf = new Float32Array(analyser.fftSize);
     src.connect(hp); hp.connect(lp); lp.connect(analyser);
+    // ventana de ~43 ms para seguir el vibrato cuando se analiza el canto
+    analyserFino = ctx.createAnalyser(); analyserFino.fftSize = 2048;
+    bufFino = new Float32Array(analyserFino.fftSize);
+    lp.connect(analyserFino);
     analyserRaw = ctx.createAnalyser(); analyserRaw.fftSize = 2048;
     bufRaw = new Float32Array(analyserRaw.fftSize);
     src.connect(analyserRaw);
@@ -1594,6 +1643,7 @@
       cancionEmpezar();
       return;
     }
+    if(S.play === "analisis"){ analisisEmpezar(false); return; }
     if(S.play === "vocaliz"){
       $("stDoneLbl").textContent = "notas logradas";
       S.exStart = 0;
@@ -1620,20 +1670,22 @@
   function loop(ts){
     raf = requestAnimationFrame(loop);
     if(!S.running) return;
-    if(S.lastTs && ts - S.lastTs < 38) return;
+    if(!AN.activo && S.lastTs && ts - S.lastTs < 38) return;   // al analizar, cada cuadro
     const dt = S.lastTs ? Math.min(120, ts - S.lastTs) : 40;
     S.lastTs = ts;
 
     const mudo = ts < S.muteUntil;
     let d = {f:-1, mudo:mudo};
     if(!mudo){
-      analyser.getFloatTimeDomainData(buf);
-      d = detectPitch(buf, ctx.sampleRate);
+      if(AN.activo && analyserFino){ analyserFino.getFloatTimeDomainData(bufFino); d = detectPitch(bufFino, ctx.sampleRate); }
+      else { analyser.getFloatTimeDomainData(buf); d = detectPitch(buf, ctx.sampleRate); }
     }else{
       hist.length = 0;
     }
 
+    if(AN.activo) anCuadro(d);
     if(R.activa && R.enBloque && rutinaTick(dt)) return;
+    if(S.mode === "analisis" || S.mode === "ligadas"){ analisisStep(d); return; }
     if(S.mode === "rutinaPausa"){ hist.length = 0; return; }
     if(S.mode === "guia"){
       try{ guiaStep(d, ts, dt); S.fallas = 0; }catch(e){ reportarFalla(e); }
@@ -1988,7 +2040,7 @@
         echo: S0.echo, patron: S0.patron, exDir: S0.exDir, acorde: S0.acorde, vuelta: S0.vuelta,
         clefMode: S0.clefMode, extra: S0.extra, acc: S0.acc,
         tol: S0.tol, holdMs: S0.holdMs, scanStep: S0.scanStep,
-        showName: S0.showName, autoTone: S0.autoTone, letra: S0.letra
+        showName: S0.showName, autoTone: S0.autoTone, letra: S0.letra, refC: refC
       }));
     }catch(e){ /* modo incógnito o sin espacio: seguimos sin guardar */ }
   }
@@ -2004,6 +2056,7 @@
     if(Array.isArray(d.anclaLog)) S.anclaLog = d.anclaLog;
     ["arcadeLen","extra","tol","holdMs","scanStep","echo","exDir"].forEach(k=>{ if(typeof d[k]==="number") S[k]=d[k]; });
     if(d.patron) S.patron = d.patron;
+    if(typeof d.refC === "number") refC = d.refC;
     ["showName","autoTone"].forEach(k=>{ if(typeof d[k]==="boolean") S[k]=d[k]; });
     const set = (id,v)=>{ const el=$(id); if(el) el.value = String(v); };
     set("selFocus",S.focus); set("selPlay",S.play); set("selLen",S.arcadeLen);
@@ -2170,7 +2223,7 @@
   ];
 
   const B_AIRE = {
-    id:"aire", titulo:"Toma de aire elegante", min:5, tipo:"aire", fn:"Aire",
+    id:"aire", titulo:"Toma de aire elegante", min:4, tipo:"aire", fn:"Aire",
     porque:"Indicación de tu maestra: mucho aire, pero elegante. Una toma silenciosa y baja llena más y deja la garganta abierta; soltarlo en «sss» parejo te enseña a gastarlo poco a poco.",
     pasos:[
       "«Saca el aire»: suelta todo sin forzar.",
@@ -2190,7 +2243,7 @@
     ]
   };
   const B_AMBULANCIA = {
-    id:"ambulancia", titulo:"Ambulancia con «i»", min:3, tipo:"sirena", fn:"Afinación",
+    id:"ambulancia", titulo:"Ambulancia con «i»", min:2, tipo:"sirena", fn:"Afinación",
     porque:"Indicación de tu maestra. La «i» acerca las cuerdas y deja escapar menos aire que la «a»; deslizarla de grave a agudo une los registros sin que se rompa la voz.",
     pasos:[
       "Sonríe un poquito y canta «iiii» con la lengua apoyada detrás de los dientes de abajo.",
@@ -2199,8 +2252,30 @@
       "Que suene limpia: si se oye «soplada», junta un poco más (piensa en una «i» brillante, casi metálica)."
     ]
   };
+  // Los dos ejercicios del plan que salió del análisis de «El Triste».
+  const B_NG = {
+    id:"ng", titulo:"«Ng» que se abre a vocal", min:4, tipo:"app", fn:"Resonadores · ring", analiza:true,
+    porque:"Del análisis de «El Triste»: tu voz tiene el material, pero le falta «ring», la energía entre 2 y 4 kHz que hace que José José «llene» sin gritar. El «ng» lleva el sonido a la nariz y los pómulos; abrirlo a vocal sin perder esa vibración enfoca la voz, y el sonido enfocado también estabiliza la afinación.",
+    pasos:[
+      "En cada nota del patrón empieza con «nggg» (como el final de «tengo»), sintiendo la vibración en nariz y pómulos.",
+      "Sin cortar el sonido, ábrelo a «a» y conserva esa vibración: no abras la garganta de golpe.",
+      "Mira el medidor de Ring: la marca verde es tu meta (−23 dB). Sube con enfoque, no con volumen.",
+      "Compara solo contra ti mismo y con el teléfono a la misma distancia: el ring depende del micrófono."
+    ],
+    cfg:{play:"vocaliz", patron:"esc5", exDir:1, tol:40, holdMs:900, acorde:"si", letra:"no"}
+  };
+  const B_LIGADAS = {
+    id:"ligadas", titulo:"Frases ligadas en «u» con vibrato al final", min:5, tipo:"ligadas", fn:"Legato · vibrato",
+    porque:"Del análisis: tus frases duran 3.1 s en promedio contra 5.1 s del original, y usas vibrato en el 18 % de las notas largas contra el 43 %. Cantar la frase en «u» sin respirar en medio entrena la línea continua, y soltar el vibrato al final le da el color del original.",
+    pasos:[
+      "Canta frases de tu canción solo con «u», sin respirar en medio (con tu pista si la cargaste en Ajustes → Análisis; toca «▶ Pista»).",
+      "Toma el aire bajo y en silencio antes de cada frase: así llegas a 5 o 6 s.",
+      "En la última nota: un segundo recta y luego deja salir el vibrato, sin empujarlo.",
+      "Al terminar cada frase la app te dice cuánto duró y si hubo vibrato al final. Después, haz la misma frase con letra. Prioriza la segunda mitad de la canción."
+    ]
+  };
   const B_LARGA = {
-    id:"larga", titulo:"Nota larga en un solo aliento", min:6, tipo:"larga", fn:"Cierre · aire",
+    id:"larga", titulo:"Nota larga en un solo aliento", min:5, tipo:"larga", fn:"Cierre · aire",
     porque:"Trabaja los dos puntos que más te fallan: que no se escape aire y que la nota no se mueva. La app mide cuánto duras, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y qué tan limpio (sin aire) suena.",
     pasos:[
       "Escucha la nota de referencia.",
@@ -2316,9 +2391,9 @@
        porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
        pasos:cal.pasos,
        cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
-      B_AIRE, B_EE, bloqueFuncion(n), B_AMBULANCIA, B_LARGA,
-      bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 3, silabasDe("terceras5") + "."),
-      bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 3,
+      B_AIRE, B_EE, bloqueFuncion(n), B_NG, B_AMBULANCIA, B_LARGA, B_LIGADAS,
+      bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 2, silabasDe("terceras5") + "."),
+      bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 2,
         "son dos renglones. Primero la SUBIDA: " + silabasDe("terceras") + ". Al terminarla aparece la BAJADA: " + silabasDe("tercerasB") + ". Arriba a la izquierda dice en cuál vas.")
     ].concat(CAN.cancion ? [{
       id:"cancion", tipo:"app", min:5, fn:"Canción", titulo:"Tu canción: " + CAN.cancion.titulo,
@@ -2446,8 +2521,10 @@
     R.enBloque = true; R.resta = b.min*60000;
     $("toneBtn").classList.remove("primary");
     $("rutInfo").open = window.innerHeight > 760;   // en el teléfono, que no tape el pentagrama
+    if(b.tipo === "ligadas"){ analisisEmpezar(true); return; }
     if(b.tipo === "app"){
       Object.assign(S, R.backup, b.cfg);
+      if(b.analiza) anEmpezar();
       S.exStart = 0; S.vuelta = false; S.lives = 3; S.letraRondas = 0;
       if(b.clave){ S.memClave = b.clave; aplicarEtapa((R.datos.terceras[b.clave] || {}).etapa || 0); }
       startPlaying();
@@ -2497,13 +2574,21 @@
     rutGuardar();
   }
 
+  // Siguiente ejercicio que falta hoy (al continuar una rutina a medias, salta los hechos).
+  function siguientePendiente(i){
+    const hechos = hechosHoy();
+    for(let k = i + 1; k < R.orden.length; k++) if(hechos.indexOf(R.orden[k].id) < 0) return k;
+    return R.orden.length;
+  }
+
   function rutinaFinBloque(hecho){
     clearTimers(); pararBordon();
     guiaCerrar();
+    anCerrarBloque(R.orden[R.i].id);
     if(hecho) marcarHecho(R.orden[R.i].id);
     ding();
     if(navigator.vibrate) navigator.vibrate([40,60,40]);
-    R.i++;
+    R.i = siguientePendiente(R.i);
     if(R.i >= R.orden.length){ rutinaCompleta(); return; }
     rutinaMostrar();
   }
@@ -2512,7 +2597,7 @@
   // sin marcar como hecho el que se deja.
   function rutinaAnterior(){
     if(!R.activa || R.pendiente) return;
-    if(R.enBloque){ clearTimers(); pararBordon(); guiaCerrar(); }
+    if(R.enBloque){ clearTimers(); pararBordon(); guiaCerrar(); anCerrarBloque(R.orden[R.i].id); }
     R.i = Math.max(0, R.i - 1);
     rutinaMostrar();
   }
@@ -2524,7 +2609,7 @@
       rutinaFinBloque(R.resta <= R.orden[R.i].min*60000*0.4);
       return;
     }
-    R.i++;
+    R.i = siguientePendiente(R.i);
     if(R.i >= R.orden.length){ rutinaCompleta(); return; }
     rutinaMostrar();
   }
@@ -2545,6 +2630,7 @@
 
   function rutinaSalir(){
     guiaCerrar();
+    if(R.enBloque && R.orden[R.i]) anCerrarBloque(R.orden[R.i].id);
     if(R.ses){ mostrarResumen(generarResumen()); R.ses = null; }
     if(R.backup) Object.assign(S, R.backup);
     R.backup = null; R.activa = false; R.enBloque = false; R.pendiente = false;
@@ -2559,7 +2645,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[], cancion:[]}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[], cancion:[], ligadas:[], an:null, ringNg:null}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2679,7 +2765,7 @@
     // 6. Afinación: solo si algo anda mal (tu maestra dice que vas bien)
     if(M.nNotas >= 5 && M.afin > 25) add(mal, M.afin/25, "En las terceras la afinación anduvo suelta (" + Math.round(M.afin) + " ¢ de desviación media).",
       "Escucha el patrón completo antes de cantar y apóyate en las sílabas.");
-    if(M.fallos >= 3) add(mal, M.fallos/4, "Se escaparon " + M.fallos + " notas en las terceras.",
+    if(M.fallos >= 3) add(mal, M.fallos/4, "Se escaparon " + M.fallos + " notas en los vocalises (terceras o escalas).",
       "Repite el patrón diciendo las sílabas sin cantar, y luego cantándolas.");
 
     // Función del día: lo que cambió entre una forma y otra (mediana de las rondas)
@@ -2702,6 +2788,27 @@
           : func === "laringe" ? "Exagera el bostezo (voz de oso) y la sonrisa (voz de caricatura)."
           : "En «ng» la lengua toca el paladar atrás; en «a» bájala del todo.");
       }
+    }
+    // Plan de «El Triste»: legato, vibrato al final, constancia y ring
+    if(R.ses.ligadas.length >= 2){
+      const L = R.ses.ligadas, prom = promedio(L.map(x=>x.dur)), vf = L.filter(x=>x.vib).length;
+      if(prom >= METAS.frasePro) add(bien, 2.2, "Frases ligadas de " + prom.toFixed(1) + " s en promedio: ya pasas la meta de " + METAS.frasePro + " s.");
+      else add(mal, 2 + (METAS.frasePro - prom), "Tus frases ligadas duraron " + prom.toFixed(1) + " s en promedio (meta " + METAS.frasePro + " s, el original 5.1 s).",
+        "Toma el aire bajo y en silencio antes de la frase y gástalo poquito a poquito; donde respirabas, liga.");
+      if(vf/L.length >= 0.35) add(bien, 1.8, "Vibrato al final en " + vf + " de " + L.length + " frases.");
+      else add(mal, 1.6, "Vibrato al final en solo " + vf + " de " + L.length + " frases.",
+        "Sostén la última nota un segundo recta y luego suelta: piensa en dejar ir la nota, no en moverla tú.");
+    }
+    if(R.ses.an && R.ses.an.pct20 !== null && R.ses.an.cantado >= 20){
+      const p = R.ses.an.pct20;
+      if(p >= METAS.pct20) add(bien, 2, "Afinación constante: " + p + " % del tiempo dentro de ±20 ¢ (meta " + METAS.pct20 + " %).");
+      else add(mal, 1.5 + (METAS.pct20 - p)/15, "Constancia de afinación: " + p + " % del tiempo dentro de ±20 ¢ (meta " + METAS.pct20 + " %).",
+        "No es que desafines hacia un lado: es la dispersión. El «ng» enfocado y las notas largas quietas son lo que más la reduce.");
+    }
+    if(R.ses.ringNg !== null && R.ses.ringNg !== undefined){
+      if(R.ses.ringNg >= METAS.ring) add(bien, 1.8, "Ring en el «ng» → vocal: " + R.ses.ringNg + " dB (meta " + METAS.ring + " dB).");
+      else add(mal, 1.2, "Ring en el «ng» → vocal: " + R.ses.ringNg + " dB (meta " + METAS.ring + " dB).",
+        "Busca la vibración en nariz y pómulos y no la pierdas al abrir la vocal. Más enfoque, no más volumen.");
     }
     if(R.ses.cancion.length){
       const CX = R.ses.cancion, mejor = Math.max.apply(null, CX.map(x=>x.nota));
@@ -2820,7 +2927,7 @@
   function bloqueFuncion(n){
     const k = ROTA_FUNCIONES[n % ROTA_FUNCIONES.length], F = FUNCIONES[k];
     return {
-      id:"funcion", tipo:"contraste", func:k, fn:F.fn, min:5, titulo:"Función del día: " + F.corto,
+      id:"funcion", tipo:"contraste", func:k, fn:F.fn, min:4, titulo:"Función del día: " + F.corto,
       porque:F.porque,
       pasos:[
         "Suena una nota. La vas a cantar de " + F.modos.length + " formas, una tras otra, unos 3 segundos cada una.",
@@ -3720,8 +3827,554 @@
     });
   })();
 
+  /* ---------------- análisis de canto ---------------- */
+  // Mide en el navegador lo mismo que el análisis externo de «El Triste»:
+  // afinación respecto a la nota temperada más cercana (con referencia
+  // ajustable), notas con ataque, final y estabilidad, vibrato, duración de
+  // frase (legato) y «ring» (energía de 2 a 4 kHz). Mientras analiza, el detector
+  // corre en cada cuadro con una ventana corta, para poder ver el vibrato.
+  const LS_AN = "entonar:analisis:v1";
+  const AN = {activo:false, fr:[], t0:0, ultVoz:-1, iniFrase:-1, frases:[], vivo:{}, ultVib:0};
+  const ANH = {sesiones:[], pista:null, tramos:"0:36–0:42, 1:09–1:11, 2:52–2:54 y 3:53 (El Triste): notas distintas al original, revisar con la maestra."};
+  // Línea base: análisis externo con pYIN de «El Triste» (8 nov 2026).
+  const BASE = {fecha:"2026-11-08", fuente:"Análisis externo · El Triste", pct20:39, absMedia:24, conSigno:-13,
+    vibPct:18, vibAmp:19, vibVel:5.1, scoopPct:4, frasePro:3.1, fraseMax:14.6, ring:-26, peorBloque:-22, estab:7};
+  const METAS = {pct20:55, peorBloque:-12, frasePro:4.5, vibPct:35, ring:-23};
+  const GAP_FRASE = 0.35;
+
+  function anGuardar(){ try{ localStorage.setItem(LS_AN, JSON.stringify(ANH)); }catch(e){} }
+  function anCargar(){
+    try{
+      const d = JSON.parse(localStorage.getItem(LS_AN) || "null");
+      if(d){ ANH.sesiones = Array.isArray(d.sesiones) ? d.sesiones : []; if(typeof d.tramos === "string") ANH.tramos = d.tramos; }
+    }catch(e){}
+    if(!ANH.sesiones.length) ANH.sesiones.push(Object.assign({base:true}, BASE));
+  }
+
+  function anEmpezar(){
+    AN.tot = 0; AN.en20 = 0;
+    AN.activo = true; AN.fr = []; AN.t0 = performance.now(); AN.ultVoz = -1; AN.iniFrase = -1;
+    AN.frases = []; AN.vivo = {}; AN.ultVib = 0;
+    $("medidores").hidden = false;
+  }
+  function anParar(){ AN.activo = false; $("medidores").hidden = true; }
+
+  // Ring: energía de 2 a 4 kHz contra la de 80 Hz a 2 kHz, en dB.
+  function ringCrudo(){
+    if(!analyserRaw) return null;
+    if(!fbuf || fbuf.length !== analyserRaw.frequencyBinCount) fbuf = new Float32Array(analyserRaw.frequencyBinCount);
+    analyserRaw.getFloatFrequencyData(fbuf);
+    const hz = ctx.sampleRate/analyserRaw.fftSize;
+    let lo = 0, hi = 0;
+    for(let i=1;i<fbuf.length;i++){
+      const f = i*hz, p = Math.pow(10, fbuf[i]/10);
+      if(f >= 80 && f < 2000) lo += p;
+      else if(f >= 2000 && f < 4000) hi += p;
+    }
+    return lo > 0 && hi > 0 ? 10*Math.log10(hi/lo) : null;
+  }
+
+  // Un cuadro: guarda la altura (midi con decimales, ya con la referencia) y el ring.
+  function anCuadro(d){
+    if(!AN.activo) return;
+    const t = (performance.now() - AN.t0)/1000;
+    const voz = d.f > 0 && (d.q || 0) >= 0.6;
+    const m = voz ? freq2midi(d.f) : null;
+    AN.fr.push({t:t, m:m, r:voz ? ringCrudo() : null});
+    if(AN.fr.length > 60*60*20) AN.fr.shift();   // tope: 20 min
+    // frase en vivo: huecos menores a 0.35 s no la cortan
+    if(voz){
+      if(AN.iniFrase < 0 || t - AN.ultVoz > GAP_FRASE) AN.iniFrase = t;
+      AN.ultVoz = t;
+    }else if(AN.iniFrase >= 0 && t - AN.ultVoz > GAP_FRASE){
+      const dur = AN.ultVoz - AN.iniFrase;
+      if(dur > 1) AN.frases.push({ini:AN.iniFrase, fin:AN.ultVoz, dur:dur});
+      if(dur > 1 && AN.alCerrarFrase) AN.alCerrarFrase(dur, AN.iniFrase, AN.ultVoz);
+      AN.iniFrase = -1;
+    }
+    pintarMedidores(t, voz);
+  }
+
+  function pintarMedidores(t, voz){
+    const V = AN.vivo;
+    const frase = AN.iniFrase >= 0 ? AN.ultVoz - AN.iniFrase : 0;
+    const meta = Math.max(METAS.frasePro, AN.metaFrase || 0);
+    $("mdFraseI").style.width = Math.min(100, frase/meta*100).toFixed(0) + "%";
+    $("mdFraseV").textContent = AN.iniFrase >= 0 ? frase.toFixed(1) + " s" : "—";
+    // ring: mediana de los últimos 0.6 s con voz
+    const rec = [];
+    for(let i=AN.fr.length-1; i>=0 && t - AN.fr[i].t < 0.6; i--) if(AN.fr[i].r !== null) rec.push(AN.fr[i].r);
+    if(rec.length >= 5){
+      V.ring = mediana(rec);
+      $("mdRingI").style.width = Math.max(0, Math.min(100, (V.ring + 36)/18*100)).toFixed(0) + "%";
+      $("mdRingV").textContent = Math.round(V.ring) + " dB";
+    }
+    // vibrato de la nota que estás sosteniendo (cada 250 ms)
+    if(voz && t - AN.ultVib > 0.25){
+      AN.ultVib = t;
+      const nota = notaActual();
+      if(nota && nota.dur >= 0.6){
+        const vb = vibrato(nota.fr);
+        V.vib = vb;
+        $("mdVibV").textContent = vb.si ? vb.vel.toFixed(1) + " Hz · ±" + Math.round(vb.amp) + " ¢" : "recta (±" + Math.round(vb.amp) + " ¢)";
+        $("mdVibI").style.width = Math.min(100, vb.amp/40*100).toFixed(0) + "%";
+        $("mdVibI").style.background = vb.si ? "var(--ok)" : "var(--muted)";
+      }
+    }
+    if(!voz && AN.iniFrase < 0){ $("mdVibV").textContent = "—"; $("mdVibI").style.width = "0%"; }
+  }
+
+  // Cuadros de la nota que suena ahora: hacia atrás mientras no salte más de medio tono.
+  function notaActual(){
+    const F = AN.fr, out = [];
+    let i = F.length - 1;
+    while(i >= 0 && F[i].m === null) i--;
+    if(i < 0) return null;
+    const ref = F[i].m;
+    for(; i >= 0; i--){
+      if(F[i].m === null){ if(out.length && out[out.length-1].t - F[i].t > 0.08) break; else continue; }
+      if(Math.abs(F[i].m - ref) > 0.5) break;
+      out.push(F[i]);
+    }
+    out.reverse();
+    return out.length > 3 ? {fr:out, dur:out[out.length-1].t - out[0].t} : null;
+  }
+
+  /* ---- D. vibrato ---- */
+  // Quita el primer 15 %, remuestrea a 100 Hz, resta tendencia cuadrática, ventana
+  // de Hann y espectro de 0.5 a 15 Hz. Hay vibrato si el pico entre 3.5 y 8.5 Hz
+  // supera 3 veces la media del espectro y la amplitud ((p95 − p5)/2) es ≥ 15 ¢.
+  function vibrato(fr){
+    const v = fr.filter(x=>x.m !== null);
+    if(v.length < 8) return {si:false, amp:0, vel:0};
+    const t0 = v[0].t, dur = v[v.length-1].t - t0, desde = t0 + dur*0.15;
+    const u = v.filter(x=>x.t >= desde);
+    const N = Math.floor((u[u.length-1].t - u[0].t)*100);
+    if(N < 30) return {si:false, amp:0, vel:0};
+    const y = new Float64Array(N);
+    let k = 0;
+    for(let i=0;i<N;i++){
+      const tt = u[0].t + i/100;
+      while(k < u.length - 2 && u[k+1].t < tt) k++;
+      const a = u[k], b = u[k+1], w = b.t > a.t ? (tt - a.t)/(b.t - a.t) : 0;
+      y[i] = (a.m + (b.m - a.m)*Math.max(0, Math.min(1, w)))*100;
+    }
+    // tendencia cuadrática por mínimos cuadrados
+    let s0=0,s1=0,s2=0,s3=0,s4=0,b0=0,b1=0,b2=0;
+    for(let i=0;i<N;i++){ const x=i/N, x2=x*x; s0++; s1+=x; s2+=x2; s3+=x2*x; s4+=x2*x2; b0+=y[i]; b1+=x*y[i]; b2+=x2*y[i]; }
+    const M = [[s0,s1,s2,b0],[s1,s2,s3,b1],[s2,s3,s4,b2]];
+    for(let c=0;c<3;c++){ for(let r=c+1;r<3;r++){ const f = M[r][c]/M[c][c]; for(let j=c;j<4;j++) M[r][j] -= f*M[c][j]; } }
+    const q2 = M[2][3]/M[2][2], q1 = (M[1][3] - M[1][2]*q2)/M[1][1], q0 = (M[0][3] - M[0][1]*q1 - M[0][2]*q2)/M[0][0];
+    const r = new Float64Array(N);
+    for(let i=0;i<N;i++){ const x=i/N; r[i] = y[i] - (q0 + q1*x + q2*x*x); }
+    const ord = Array.from(r).sort((a,b)=>a-b);
+    const amp = (ord[Math.floor(N*0.95)] - ord[Math.floor(N*0.05)])/2;
+    let suma = 0, n = 0, pico = 0, vel = 0;
+    for(let f=0.5; f<=15.001; f+=0.1){
+      let re = 0, im = 0;
+      for(let i=0;i<N;i++){ const w = 0.5 - 0.5*Math.cos(2*Math.PI*i/(N-1)), ph = 2*Math.PI*f*i/100; re += r[i]*w*Math.cos(ph); im -= r[i]*w*Math.sin(ph); }
+      const mag = Math.sqrt(re*re + im*im);
+      suma += mag; n++;
+      if(f >= 3.5 && f <= 8.5 && mag > pico){ pico = mag; vel = f; }
+    }
+    return {si: pico > 3*(suma/n) && amp >= 15, amp:amp, vel:vel};
+  }
+
+  /* ---- C. segmentación en notas ---- */
+  function segmentar(F){
+    const notas = [];
+    let run = [];
+    const cerrar = ()=>{
+      if(run.length < 5){ run = []; return; }
+      const ms = run.map(x=>x.m), med = ms.map((_, i)=>{
+        const w = ms.slice(Math.max(0, i-4), i+5).sort((a,b)=>a-b);
+        return Math.round(w[w.length >> 1]);
+      });
+      let ini = 0;
+      for(let i=1;i<=run.length;i++){
+        if(i === run.length || med[i] !== med[ini]){
+          const tr = run.slice(ini, i);
+          if(tr.length && tr[tr.length-1].t - tr[0].t >= 0.12) notas.push({nota:med[ini], fr:tr, ini:tr[0].t, dur:tr[tr.length-1].t - tr[0].t});
+          ini = i;
+        }
+      }
+      run = [];
+    };
+    for(let i=0;i<F.length;i++){
+      const x = F[i];
+      if(x.m === null){ cerrar(); continue; }
+      if(run.length && Math.abs(x.m - run[run.length-1].m) > 0.5) cerrar();
+      run.push(x);
+    }
+    cerrar();
+    return notas.map(n=>{
+      const d = n.dur, cs = n.fr.map(x=>(x.m - n.nota)*100);
+      const ts = n.fr.map(x=>x.t - n.ini);
+      const sel = (a, b)=> cs.filter((_, i)=>ts[i] >= a && ts[i] <= b);
+      const nucleo = sel(d*0.25, d*0.8), core = mediana(nucleo.length ? nucleo : cs);
+      const ini = sel(0, 0.06), fin = sel(d - 0.06, d);
+      const s = promedio(nucleo.length ? nucleo : cs);
+      const sd = Math.sqrt(Math.max(0, promedio((nucleo.length ? nucleo : cs).map(x=>x*x)) - s*s));
+      const vb = d >= 0.6 ? vibrato(n.fr) : null;
+      return {nota:n.nota, ini:n.ini, dur:d, core:core, sd:sd,
+        ataque:ini.length ? mediana(ini) - core : 0, final:fin.length ? mediana(fin) - core : 0, vib:vb};
+    });
+  }
+
+  /* ---- reporte de una sesión ---- */
+  function anReporte(){
+    const F = AN.fr;
+    const voz = F.filter(x=>x.m !== null);
+    if(voz.length < 60) return null;   // menos de ~1 s cantado: no se puede evaluar
+    // A. % dentro de ±20 ¢ y desviaciones, ponderado por tiempo
+    let tot = 0, en20 = 0, en15 = 0, sAbs = 0, sSig = 0;
+    const hist = new Array(21).fill(0);
+    for(let i=1;i<F.length;i++){
+      const x = F[i];
+      if(x.m === null) continue;
+      const dt = Math.min(0.05, x.t - F[i-1].t), c = (x.m - Math.round(x.m))*100;
+      tot += dt; sAbs += Math.abs(c)*dt; sSig += c*dt;
+      if(Math.abs(c) <= 20) en20 += dt;
+      if(Math.abs(c) <= 15) en15 += dt;
+      hist[Math.max(0, Math.min(20, Math.round(c/5) + 10))] += dt;
+    }
+    const notas = segmentar(F);
+    const largas = notas.filter(n=>n.dur >= 0.6 && n.vib);
+    const conVib = largas.filter(n=>n.vib.si);
+    // registro, en tercios de tu rango
+    const T = S.tessFull || S.tess || {lo:45, hi:65}, tercio = (T.hi - T.lo)/3;
+    const reg = {grave:[], medio:[], agudo:[]};
+    notas.forEach(n=>{
+      const k = n.nota < T.lo + tercio ? "grave" : n.nota < T.lo + 2*tercio ? "medio" : "agudo";
+      reg[k].push(n.core);
+    });
+    // bloques de 30 s
+    const bloques = [];
+    const durTot = F.length ? F[F.length-1].t : 0;
+    for(let b=0; b*30 < durTot; b++){
+      const cs = notas.filter(n=>n.ini >= b*30 && n.ini < (b+1)*30).map(n=>n.core);
+      if(cs.length >= 3) bloques.push({desde:b*30, sig:promedio(cs), abs:promedio(cs.map(Math.abs))});
+    }
+    // E. frases
+    const fr = AN.frases.slice();
+    if(AN.iniFrase >= 0 && AN.ultVoz - AN.iniFrase > 1) fr.push({dur:AN.ultVoz - AN.iniFrase});
+    const rings = voz.map(x=>x.r).filter(x=>x !== null);
+    const R0 = {
+      fecha:fechaStr(), cantado:tot,
+      pct20:Math.round(en20/tot*100), pct15:Math.round(en15/tot*100),
+      absMedia:Math.round(sAbs/tot), conSigno:Math.round(sSig/tot),
+      hist:hist.map(x=>x/tot),
+      notas:notas.length,
+      estab:largas.length ? Math.round(mediana(largas.map(n=>n.sd))) : null,
+      vibPct:largas.length >= 3 ? Math.round(conVib.length/largas.length*100) : null,
+      vibAmp:conVib.length ? Math.round(mediana(conVib.map(n=>n.vib.amp))) : null,
+      vibVel:conVib.length ? Math.round(mediana(conVib.map(n=>n.vib.vel))*10)/10 : null,
+      scoopPct:notas.length >= 5 ? Math.round(notas.filter(n=>n.ataque < -30).length/notas.length*100) : null,
+      caidaPct:notas.length >= 5 ? Math.round(notas.filter(n=>n.final < -30).length/notas.length*100) : null,
+      registro:{grave:reg.grave.length >= 3 ? Math.round(promedio(reg.grave)) : null,
+                medio:reg.medio.length >= 3 ? Math.round(promedio(reg.medio)) : null,
+                agudo:reg.agudo.length >= 3 ? Math.round(promedio(reg.agudo)) : null},
+      bloques:bloques.map(b=>({desde:b.desde, sig:Math.round(b.sig)})),
+      // el bloque más lejos de 0, hacia cualquier lado
+      peorBloque:bloques.length ? Math.round(bloques.reduce((a, b)=>Math.abs(b.sig) > Math.abs(a.sig) ? b : a).sig) : null,
+      frasePro:fr.length ? Math.round(promedio(fr.map(x=>x.dur))*10)/10 : null,
+      fraseMax:fr.length ? Math.round(Math.max.apply(null, fr.map(x=>x.dur))*10)/10 : null,
+      ring:rings.length >= 20 ? Math.round(mediana(rings)*10)/10 : null,
+      ref:refC
+    };
+    return R0;
+  }
+
+  function anGuardarSesion(r){
+    if(!r || r.cantado < 20) return;   // sesiones de menos de 20 s cantados no entran a la tendencia
+    const h = Object.assign({}, r); delete h.hist; delete h.bloques;
+    ANH.sesiones.push(h);
+    if(ANH.sesiones.length > 200) ANH.sesiones.splice(1, 1);   // conserva la línea base
+    anGuardar();
+  }
+
+  /* ---- A. histograma ---- */
+  function svgHistograma(h, media){
+    const W = 320, H = 120, x0 = 10, ancho = (W - 2*x0)/21, max = Math.max.apply(null, h) || 1;
+    const xc = c => x0 + (c + 52.5)/105*(W - 2*x0);
+    let s = '<svg viewBox="0 0 ' + W + ' ' + (H + 22) + '" class="histo" role="img" aria-label="Histograma de desviación de afinación">';
+    s += '<rect x="' + xc(-20) + '" y="0" width="' + (xc(20) - xc(-20)) + '" height="' + H + '" fill="rgba(47,143,114,.14)"/>';
+    s += '<rect x="' + xc(-15) + '" y="0" width="' + (xc(15) - xc(-15)) + '" height="' + H + '" fill="rgba(47,143,114,.16)"/>';
+    h.forEach((v, i)=>{
+      const bh = v/max*(H - 6), x = x0 + i*ancho;
+      s += '<rect x="' + (x + 1).toFixed(1) + '" y="' + (H - bh).toFixed(1) + '" width="' + (ancho - 2).toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="' + (Math.abs(i - 10) <= 4 ? "#2F8F72" : "#B08A16") + '" rx="1.5"/>';
+    });
+    s += '<line x1="' + xc(media) + '" y1="0" x2="' + xc(media) + '" y2="' + H + '" stroke="#B4542F" stroke-width="2" stroke-dasharray="4 3"/>';
+    [-50,-25,0,25,50].forEach(c=>{ s += '<text x="' + xc(c) + '" y="' + (H + 15) + '" font-size="10" text-anchor="middle" fill="currentColor">' + (c > 0 ? "+" : "") + c + '</text>'; });
+    return s + "</svg>";
+  }
+
+  /* ---- reporte en pantalla ---- */
+  function filaMeta(nombre, v, base, meta, fmt, mejorAlto){
+    if(v === null || v === undefined) return "";
+    const ok = meta === undefined ? null : typeof mejorAlto === "function" ? mejorAlto(v) : v >= meta;
+    return "<tr><td>" + nombre + "</td><td class=\"v\">" + fmt(v) + "</td><td class=\"v\">" + (base === null || base === undefined ? "—" : fmt(base))
+      + "</td><td class=\"v\">" + (meta === undefined ? "—" : "<span class=\"" + (ok ? "up" : "") + "\">" + fmt(meta) + (ok ? " ✓" : "") + "</span>") + "</td></tr>";
+  }
+
+  function htmlReporte(r, paraImprimir){
+    const B = ANH.sesiones.find(x=>x.base) || BASE;
+    const pct = v => v + " %", ct = v => (v > 0 ? "+" : "") + v + " ¢", sg = v => v + " s", db = v => v + " dB";
+    let h = "<h3>Análisis de canto · " + r.fecha + "</h3>";
+    h += "<p class=\"rsSub\">" + Math.round(r.cantado) + " s cantados · " + r.notas + " notas · referencia La4 = " + (440*Math.pow(2, (r.ref||0)/1200)).toFixed(1) + " Hz</p>";
+    h += "<h4>AFINACIÓN (desviación respecto a la nota más cercana)</h4>" + svgHistograma(r.hist, r.conSigno);
+    h += "<p class=\"rsSub\">Zona sombreada: ±15 y ±20 ¢. Línea punteada: tu promedio (" + ct(r.conSigno) + ").</p>";
+    h += "<table><tr><td></td><td class=\"v\"><b>Hoy</b></td><td class=\"v\"><b>Base</b></td><td class=\"v\"><b>Meta</b></td></tr>";
+    h += filaMeta("Tiempo dentro de ±20 ¢", r.pct20, B.pct20, METAS.pct20, pct, true);
+    h += filaMeta("Desviación promedio", r.absMedia, B.absMedia, undefined, v=>v + " ¢");
+    h += filaMeta("Desviación con signo", r.conSigno, B.conSigno, undefined, ct);
+    h += filaMeta("Peor bloque de 30 s", r.peorBloque, B.peorBloque, METAS.peorBloque, ct, v=>Math.abs(v) <= Math.abs(METAS.peorBloque));
+    h += filaMeta("Duración de frase (promedio)", r.frasePro, B.frasePro, METAS.frasePro, sg, true);
+    h += filaMeta("Frase más larga", r.fraseMax, B.fraseMax, undefined, sg);
+    h += filaMeta("Notas largas con vibrato", r.vibPct, B.vibPct, METAS.vibPct, pct, true);
+    h += filaMeta("Vibrato: amplitud", r.vibAmp, B.vibAmp, undefined, v=>"±" + v + " ¢");
+    h += filaMeta("Vibrato: velocidad", r.vibVel, B.vibVel, undefined, v=>v + " Hz");
+    h += filaMeta("Estabilidad en notas largas", r.estab, B.estab, undefined, v=>"±" + v + " ¢");
+    h += filaMeta("Entradas desde abajo", r.scoopPct, B.scoopPct, undefined, pct);
+    h += filaMeta("Notas que caen al final", r.caidaPct, null, undefined, pct);
+    h += filaMeta("Ring (2–4 kHz)", r.ring, B.ring, METAS.ring, db, true);
+    h += "</table>";
+    const RG = r.registro, regs = ["grave","medio","agudo"].filter(k=>RG[k] !== null);
+    if(regs.length) h += "<p class=\"rsSub\">Por registro: " + regs.map(k=>k + " " + ct(RG[k])).join(" · ") + "</p>";
+    if(r.bloques && r.bloques.length > 1 && r.bloques.some(b=>b.sig !== r.bloques[0].sig)){
+      const peor = r.bloques.reduce((a,b)=>Math.abs(b.sig) > Math.abs(a.sig) ? b : a), mejor = r.bloques.reduce((a,b)=>Math.abs(b.sig) < Math.abs(a.sig) ? b : a);
+      const mm = s => Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+      h += "<p class=\"rsSub\">Bloques de 30 s: el más desafinado " + mm(peor.desde) + "–" + mm(peor.desde + 30) + " (" + ct(peor.sig) + "), el mejor " + mm(mejor.desde) + "–" + mm(mejor.desde + 30) + " (" + ct(mejor.sig) + ").</p>";
+    }
+    // tendencia
+    const ses = ANH.sesiones.filter(x=>typeof x.pct20 === "number").slice(-8);
+    if(ses.length > 1){
+      h += "<h4>TENDENCIA</h4><table><tr><td><b>Fecha</b></td><td class=\"v\"><b>±20 ¢</b></td><td class=\"v\"><b>Frase</b></td><td class=\"v\"><b>Vibrato</b></td><td class=\"v\"><b>Ring</b></td></tr>";
+      ses.forEach(x=>{ h += "<tr><td>" + x.fecha + (x.base ? " (base)" : "") + "</td><td class=\"v\">" + x.pct20 + " %</td><td class=\"v\">" + (x.frasePro ?? "—") + " s</td><td class=\"v\">" + (x.vibPct ?? "—") + " %</td><td class=\"v\">" + (x.ring ?? "—") + " dB</td></tr>"; });
+      h += "</table>";
+    }
+    if(paraImprimir && ANH.tramos) h += "<h4>TRAMOS A REVISAR</h4><p>" + esc(ANH.tramos) + "</p>";
+    h += "<p class=\"limite\">La base viene de un análisis con pYIN y la voz separada de la pista; el micrófono en vivo da cifras parecidas pero no idénticas. El ring depende del micrófono y la distancia: compara solo sesiones con el mismo equipo. Para medir, mejor con audífonos si suena la pista.</p>";
+    return h;
+  }
+
+  function mostrarReporteAn(r){
+    if(!r){ return false; }
+    const box = $("resumen");
+    box.innerHTML = htmlReporte(r, false) + '<button class="mini" id="anPdf" style="margin-top:10px">Reporte para la maestra (PDF)</button>';
+    box.hidden = false;
+    $("anPdf").addEventListener("click", ()=>imprimirReporte(r));
+    setTimeout(()=> box.scrollIntoView({behavior:"smooth", block:"start"}), 300);
+    return true;
+  }
+
+  /* ---- G. reporte para la maestra ---- */
+  function imprimirReporte(r){
+    const w = window.open("", "_blank");
+    if(!w){ alert("El navegador bloqueó la ventana del reporte. Permite ventanas emergentes para esta página."); return; }
+    const notas = (R.datos.notas || "").split("\n").filter(x=>x.trim());
+    w.document.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Entonar · análisis ' + r.fecha + '</title>'
+      + '<style>body{font:14px/1.45 Georgia,serif;color:#141B2D;max-width:720px;margin:24px auto;padding:0 16px}'
+      + 'h3{font-weight:400;font-size:22px;margin:0 0 4px}h4{font:600 12px system-ui,sans-serif;letter-spacing:.4px;color:#8a6d10;margin:18px 0 6px}'
+      + 'table{width:100%;border-collapse:collapse;font:13px system-ui,sans-serif}td{padding:5px 4px;border-bottom:1px solid #ddd}td.v{text-align:right}'
+      + '.rsSub,.limite{color:#555;font:12px system-ui,sans-serif}.histo{width:100%;max-width:480px;color:#555}.up{color:#2F8F72}'
+      + '@media print{body{margin:0}}</style></head><body>' + htmlReporte(r, true)
+      + (notas.length ? "<h4>INDICACIONES DE LA MAESTRA</h4><ul>" + notas.map(x=>"<li>" + esc(x) + "</li>").join("") + "</ul>" : "")
+      + '<scr' + 'ipt>setTimeout(function(){ window.print(); }, 400);</scr' + 'ipt></body></html>');
+    w.document.close();
+  }
+
+  /* ---- B. referencia de afinación ---- */
+  function pintarRef(){
+    $("anRef").value = String(refC);
+    $("anRefV").textContent = (refC > 0 ? "+" : "") + refC + " ¢ · La4 = " + (440*Math.pow(2, refC/1200)).toFixed(1) + " Hz";
+  }
+  function fijarRef(c){
+    refC = Math.max(-50, Math.min(50, Math.round(c)));
+    pintarRef(); guardar();
+  }
+
+  // Afinación de una pista: picos del espectro y su desviación respecto al
+  // temperado (a 440), en un histograma circular de 1 ¢ (como estimate_tuning).
+  function fft(re, im){
+    const n = re.length;
+    for(let i=1, j=0; i<n; i++){
+      let bit = n >> 1;
+      for(; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if(i < j){ [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+    }
+    for(let len=2; len<=n; len<<=1){
+      const ang = -2*Math.PI/len, wr = Math.cos(ang), wi = Math.sin(ang);
+      for(let i=0; i<n; i+=len){
+        let cr = 1, ci = 0;
+        for(let k=0; k<len/2; k++){
+          const a = i + k, b = a + len/2;
+          const tr = re[b]*cr - im[b]*ci, ti = re[b]*ci + im[b]*cr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+          const t = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = t;
+        }
+      }
+    }
+  }
+  function afinacionDePista(buffer){
+    const sr = buffer.sampleRate, x = buffer.getChannelData(0), N = 8192;
+    const hist = new Float64Array(100);
+    const hasta = Math.min(x.length - N, sr*90);
+    for(let p = Math.floor(sr*2); p < hasta; p += N){
+      const re = new Float64Array(N), im = new Float64Array(N);
+      for(let i=0;i<N;i++) re[i] = x[p + i]*(0.5 - 0.5*Math.cos(2*Math.PI*i/(N-1)));
+      fft(re, im);
+      const mag = new Float64Array(N/2);
+      let mx = 0;
+      for(let i=1;i<N/2;i++){ mag[i] = Math.hypot(re[i], im[i]); if(mag[i] > mx) mx = mag[i]; }
+      const lo = Math.ceil(80*N/sr), hi = Math.floor(2000*N/sr);
+      for(let i=Math.max(2, lo); i<hi; i++){
+        if(mag[i] < mx*0.05 || mag[i] <= mag[i-1] || mag[i] < mag[i+1]) continue;
+        const a = mag[i-1], b = mag[i], c = mag[i+1], d = 0.5*(a - c)/(a - 2*b + c);
+        const f = (i + d)*sr/N, cents = 1200*Math.log2(f/440);
+        const dev = ((cents % 100) + 150) % 100 - 50;   // −50..+50
+        hist[Math.round(dev + 50) % 100] += b;
+      }
+    }
+    let mejor = 0, idx = 0;
+    for(let k=0;k<100;k++){
+      let s = 0;
+      for(let j=-3;j<=3;j++) s += hist[(k + j + 100) % 100];
+      if(s > mejor){ mejor = s; idx = k; }
+    }
+    return mejor > 0 ? idx - 50 : null;
+  }
+
+  (function ajustesAnalisis(){
+    $("anRef").addEventListener("input", e=>fijarRef(Number(e.target.value)));
+    $("anRef440").addEventListener("click", ()=>fijarRef(0));
+    $("anPista").addEventListener("change", e=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const au = $("anAudio");
+      if(au.src) URL.revokeObjectURL(au.src);
+      au.src = URL.createObjectURL(f);
+      $("anPistaInfo").textContent = f.name + " · analizando su afinación…";
+      $("anPistaRow").hidden = false;
+      f.arrayBuffer().then(ab=>{
+        const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+        return oc.decodeAudioData(ab);
+      }).then(buf=>{
+        const c = afinacionDePista(buf);
+        AN.refPista = c;
+        $("anPistaInfo").textContent = f.name + (c === null ? " · no se pudo estimar su afinación"
+          : " · afinada " + (c > 0 ? "+" : "") + c + " ¢ (La4 = " + (440*Math.pow(2, c/1200)).toFixed(1) + " Hz)");
+        $("anUsarPista").hidden = c === null;
+      }).catch(()=>{ $("anPistaInfo").textContent = f.name + " · no se pudo leer el audio para estimar su afinación"; });
+      e.target.value = "";
+    });
+    $("anUsarPista").addEventListener("click", ()=>{ if(AN.refPista !== undefined && AN.refPista !== null) fijarRef(AN.refPista); });
+    $("anTramos").addEventListener("input", e=>{ ANH.tramos = e.target.value; anGuardar(); });
+  })();
+
+  /* ---- modo «Análisis libre» y el ejercicio de frases ligadas ---- */
+  function pistaPlay(){
+    const au = $("anAudio");
+    if(!au.src){ return false; }
+    if(au.paused){ au.play().catch(()=>{}); } else au.pause();
+    return true;
+  }
+  function textoPista(){
+    const au = $("anAudio");
+    return !au.src ? "" : au.paused ? "▶ Pista" : "⏸ Pista";
+  }
+
+  function analisisEmpezar(ligadas){
+    clearTimers();
+    anEmpezar();
+    S.mode = ligadas ? "ligadas" : "analisis";
+    AN.metaFrase = ligadas ? Math.max(METAS.frasePro, Math.round((mejorAn("frasePro") || 3)*1.15*10)/10) : 0;
+    AN.alCerrarFrase = ligadas ? fraseLigada : null;
+    $("badge").textContent = ligadas ? "Frases ligadas · meta " + AN.metaFrase + " s" : "Análisis · canta lo que quieras";
+    $("noteName").innerHTML = "";
+    drawStaff(null, autoClef(), {});
+    $("toneBtn").textContent = $("anAudio").src ? textoPista() : "Sin pista";
+    $("toneBtn").disabled = !$("anAudio").src;
+    $("skipBtn").textContent = ligadas ? "Siguiente" : "Ver reporte";
+    $("msgMain").textContent = ligadas ? "Frase en «u», sin respirar en medio" : "Canta: te escucho";
+    $("msgSub").textContent = ligadas ? "En la última nota: un segundo recta y luego deja salir el vibrato."
+      : ($("anAudio").src ? "Toca «▶ Pista» para cantar sobre tu pista (mejor con audífonos)." : "Puedes cargar tu pista en Ajustes → Análisis.");
+  }
+  function mejorAn(k){
+    return ANH.sesiones.reduce((m, x)=> typeof x[k] === "number" ? Math.max(m, x[k]) : m, 0) || null;
+  }
+
+  // Al terminar una frase en el ejercicio de ligadas: duración y vibrato final.
+  function fraseLigada(dur, ini, fin){
+    const fr = AN.fr.filter(x=>x.t >= ini && x.t <= fin);
+    const notas = segmentar(fr);
+    const ult = notas.length ? notas[notas.length-1] : null;
+    const vib = ult && ult.dur >= 0.6 ? ult.vib : null;
+    const ok = dur >= AN.metaFrase;
+    $("msg").classList.toggle("tuned", ok);
+    $("msgMain").textContent = dur.toFixed(1) + " s" + (ok ? " — ¡meta!" : "");
+    $("msgSub").textContent = !ult || ult.dur < 0.6 ? "La última nota fue corta: sostenla al menos un segundo."
+      : vib && vib.si ? "Vibrato al final ✓ (" + vib.vel.toFixed(1) + " Hz, ±" + Math.round(vib.amp) + " ¢)"
+      : "Final recto (±" + Math.round(vib ? vib.amp : 0) + " ¢): suelta el vibrato después del primer segundo.";
+    if(R.ses) R.ses.ligadas.push({dur:dur, vib:!!(vib && vib.si)});
+  }
+
+  // En vivo: la nota más cercana, cuántos cents te separan y el % dentro de ±20 ¢.
+  function analisisStep(d){
+    let m = null;
+    if(d.f > 0 && (d.q || 0) >= 0.6){ hist.push(d.f); if(hist.length > 4) hist.shift(); m = freq2midi(median3()); }
+    else hist.length = 0;
+    const F = AN.fr, n = F.length;
+    if(n > 1 && F[n-1].m !== null){
+      const c0 = (F[n-1].m - Math.round(F[n-1].m))*100, dt = Math.min(0.05, F[n-1].t - F[n-2].t);
+      AN.tot = (AN.tot || 0) + dt; if(Math.abs(c0) <= 20) AN.en20 = (AN.en20 || 0) + dt;
+    }
+    if(m === null){
+      $("arrow").className = "arrow"; $("arrow").textContent = "·";
+      $("msg").classList.remove("tuned");
+      return;
+    }
+    const nota = Math.round(m), c = (m - nota)*100, ok = Math.abs(c) <= 20;
+    if(!AN.dib || performance.now() - AN.dib > 90){ AN.dib = performance.now(); showProbe(nota, 0, c, ok); }
+    $("badge").textContent = S.mode === "ligadas" ? "Frases ligadas · meta " + AN.metaFrase + " s" : "Análisis · ±20 ¢: " + (AN.tot ? Math.round(AN.en20/AN.tot*100) : 0) + " %";
+    $("arrow").className = "arrow" + (ok ? "" : " on");
+    $("arrow").textContent = ok ? "●" : c < 0 ? "↑" : "↓";
+    if(S.mode === "analisis"){
+      $("msg").classList.toggle("tuned", ok);
+      $("msgMain").textContent = midiLabel(nota) + "  ·  " + (c >= 0 ? "+" : "") + Math.round(c) + " ¢";
+    }
+  }
+
+  // Cierra el análisis de un bloque de la rutina y guarda lo que sirva al resumen.
+  function anCerrarBloque(id){
+    if(!AN.activo) return;
+    const r = anReporte();
+    if(R.ses && r){
+      if(id === "ng") R.ses.ringNg = r.ring;
+      if(id === "ligadas"){ R.ses.an = r; anGuardarSesion(r); }
+    }
+    anParar();
+    $("anAudio").pause();
+  }
+
+  function analisisTerminar(){
+    const r = anReporte();
+    anParar();
+    $("anAudio").pause();
+    anGuardarSesion(r);
+    if(!mostrarReporteAn(r)){
+      $("msgMain").textContent = "Muy poco canto para analizar";
+      $("msgSub").textContent = "Canta al menos unos segundos seguidos.";
+    }
+    return r;
+  }
+
   /* ---------------- controles ---------------- */
   function detener(main, sub){
+    const enAnalisis = AN.activo && S.mode === "analisis";
+    if(enAnalisis) analisisTerminar();
+    else if(AN.activo && !R.activa){ anParar(); $("anAudio").pause(); }
     S.running = false;
     if(candado){ candado.release().catch(()=>{}); candado = null; }
     clearTimers(); pararBordon();
@@ -3732,7 +4385,7 @@
     // Todo lo que pertenece al contexto de audio cerrado se rehace con el
     // siguiente: conectar a un nodo viejo falla y deja la app sin sonido.
     master = null; pWave = null; gWave = null; noiseB = null; jitB = null;
-    analyser = null; analyserRaw = null;
+    analyser = null; analyserRaw = null; analyserFino = null;
     const eraRutina = R.activa;
     if(eraRutina) rutinaSalir();
     $("startBtn").textContent = "Práctica libre";
@@ -3819,10 +4472,12 @@
     if(S.mode==="scanDown" || S.mode==="scanUp"){ probeTone(S.probe); return; }
     if(S.mode==="arcadeSing" || S.mode==="arcadePlay"){ playSequence(); return; }
     if(S.mode==="canKaraoke" || S.mode==="canResultado"){ cancionEmpezar(); return; }
+    if(S.mode==="analisis" || S.mode==="ligadas"){ pistaPlay(); $("toneBtn").textContent = textoPista(); return; }
     playTone();
   });
   $("skipBtn").addEventListener("click", ()=>{
-    if(S.mode==="rutinaPausa" || S.mode==="guia"){ rutinaSiguiente(); return; }
+    if(S.mode==="rutinaPausa" || S.mode==="guia" || S.mode==="ligadas"){ rutinaSiguiente(); return; }
+    if(S.mode==="analisis"){ analisisTerminar(); return; }
     if(S.mode==="scanDown" || S.mode==="scanUp"){ scanEnd(); return; }
     if(S.play==="ancla" && S.tess){ anclaNueva(); return; }
     if(S.play==="cancion" && S.tess){ cancionSaltar(); return; }
@@ -4023,6 +4678,9 @@
   rutCargar();
   canCargar();
   pintarCancion();
+  anCargar();
+  pintarRef();
+  $("anTramos").value = ANH.tramos;
   if(R.datos.notas === null) R.datos.notas = NOTAS_CLASE;
   $("notasClase").value = R.datos.notas;
   pintarHoy();

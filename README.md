@@ -2,7 +2,7 @@
 
 Entrenador de afinación y lectura para la voz, en una sola página (`index.html`). El micrófono se procesa en el dispositivo.
 
-## Rutina de hoy (30 min, 35 con tu canción)
+## Rutina de hoy (33 min, 38 con tu canción)
 
 Está organizada alrededor de las **4 funciones de la voz**:
 
@@ -85,6 +85,37 @@ Con una canción cargada, la rutina agrega el bloque **Tu canción** (5 min). En
 - Cada nota es `[midi escrito, duración en tiempos, sílaba, inicio en tiempos desde el comienzo de la frase]`.
 - `pulso` es el tiempo del compás en que empieza la frase, contado desde 0.
 - Los acordes van como `[tiempo, nombre]`, con nombres como C, Em, G7 o Dm7.
+
+## Análisis de canto
+
+Mide en el navegador las métricas del análisis externo de «El Triste» (pYIN), para seguir el progreso sin depender de él. Está en **Práctica libre → Análisis libre** (cantar lo que quieras, con o sin tu pista) y en dos ejercicios de la rutina.
+
+| Métrica | Cómo se mide |
+|---|---|
+| **% dentro de ±20 ¢** | Desviación respecto a la nota temperada más cercana, ponderada por tiempo, con histograma de −50 a +50 ¢ |
+| **Referencia de afinación** | La4 ajustable ±50 ¢. Con tu pista cargada, la app estima su afinación (picos del espectro, como `estimate_tuning`) |
+| **Notas** | Rachas con voz sin saltos de más de 0.5 st, mediana de 9 cuadros, mesetas de al menos 0.12 s. Por nota: núcleo (25–80 %), ataque desde abajo (< −30 ¢), caída al final (< −30 ¢) y estabilidad. También por registro y por bloques de 30 s |
+| **Vibrato** | Notas de al menos 0.6 s: quita el 15 % inicial, remuestrea a 100 Hz, resta tendencia cuadrática, aplica Hann y espectro. Hay vibrato si el pico entre 3.5 y 8.5 Hz supera 3× la media y la amplitud es de al menos 15 ¢ |
+| **Frase / legato** | Huecos de menos de 0.35 s no cortan la frase. Solo cuentan frases de más de 1 s |
+| **Ring** | Energía de 2 a 4 kHz contra la de 80 Hz a 2 kHz, en dB (mediana de los cuadros con voz) |
+
+**Durante el análisis:**
+
+- Medidores en vivo de frase, ring y vibrato.
+- El detector corre en cada cuadro, con una ventana de unos 43 ms, para poder seguir el vibrato.
+
+**Al terminar:**
+
+- Reporte con histograma, comparado contra la línea base del 8 de noviembre de 2026 y contra las metas.
+- Tendencia por sesión.
+- **Reporte para la maestra**: imprimir o guardar como PDF, con los tramos a revisar.
+
+**Ejercicios en la rutina:**
+
+- **«Ng» que se abre a vocal**, con el medidor de ring.
+- **Frases ligadas en «u» con vibrato al final**: al terminar cada frase dice cuánto duró y si hubo vibrato.
+
+**Tu pista de karaoke** se carga en Ajustes → **Análisis** y se queda solo en el dispositivo.
 
 ## Resumen al terminar
 
