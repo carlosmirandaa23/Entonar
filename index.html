@@ -121,6 +121,7 @@
   .medidores{margin-top:12px;display:grid;gap:7px}
   .md{display:grid;grid-template-columns:62px 1fr 118px;align-items:center;gap:10px;font-size:12.5px}
   .md span{color:var(--muted)}
+  .md[hidden]{display:none}
   .md b{font-weight:500;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .mdb{height:8px;background:var(--ink-2);border-radius:99px;overflow:hidden;position:relative}
   .mdb i{display:block;height:100%;width:0;background:var(--gold);transition:width .15s linear}
@@ -199,9 +200,10 @@
   </div>
   <div class="holdbar"><i id="hold"></i></div>
   <div class="medidores" id="medidores" hidden>
-    <div class="md"><span>Frase</span><div class="mdb"><i id="mdFraseI"></i></div><b id="mdFraseV">—</b></div>
-    <div class="md"><span>Ring</span><div class="mdb"><i id="mdRingI"></i><em style="left:72%" title="Meta −23 dB"></em></div><b id="mdRingV">—</b></div>
-    <div class="md"><span>Vibrato</span><div class="mdb"><i id="mdVibI"></i></div><b id="mdVibV">—</b></div>
+    <div class="md" id="mdDenRow" hidden><span>Densidad</span><div class="mdb"><i id="mdDenI"></i></div><b id="mdDenV">—</b></div>
+    <div class="md mdAn"><span>Frase</span><div class="mdb"><i id="mdFraseI"></i></div><b id="mdFraseV">—</b></div>
+    <div class="md mdAn"><span>Ring</span><div class="mdb"><i id="mdRingI"></i><em style="left:72%" title="Meta −23 dB"></em></div><b id="mdRingV">—</b></div>
+    <div class="md mdAn"><span>Vibrato</span><div class="mdb"><i id="mdVibI"></i></div><b id="mdVibV">—</b></div>
   </div>
   <audio id="anAudio" preload="auto"></audio>
 
@@ -931,7 +933,7 @@
   }
 
   /* ---------------- audio ---------------- */
-  let ctx=null, analyser=null, buf=null, stream=null, raf=0, analyserRaw=null, bufRaw=null, analyserFino=null, bufFino=null;
+  let ctx=null, analyser=null, buf=null, stream=null, raf=0, analyserRaw=null, bufRaw=null, analyserFino=null, bufFino=null, analyserDen=null;
   const hist = [];
   let mBuf = [];
 
@@ -959,6 +961,9 @@
     analyserRaw = ctx.createAnalyser(); analyserRaw.fftSize = 2048;
     bufRaw = new Float32Array(analyserRaw.fftSize);
     src.connect(analyserRaw);
+    // alta resolución (~6 Hz) para separar el 1.º y el 2.º armónico en voces graves
+    analyserDen = ctx.createAnalyser(); analyserDen.fftSize = 8192; analyserDen.smoothingTimeConstant = 0.3;
+    src.connect(analyserDen);
   }
 
   function rmsCrudo(){
@@ -2275,7 +2280,7 @@
     ]
   };
   const B_LARGA = {
-    id:"larga", titulo:"Nota larga en un solo aliento", min:5, tipo:"larga", fn:"Cierre · aire",
+    id:"larga", titulo:"Nota larga en un solo aliento", min:4, tipo:"larga", fn:"Cierre · aire",
     porque:"Trabaja los dos puntos que más te fallan: que no se escape aire y que la nota no se mueva. La app mide cuánto duras, cuánto se mueve la nota, si se cae al final, si el volumen va parejo y qué tan limpio (sin aire) suena.",
     pasos:[
       "Escucha la nota de referencia.",
@@ -2391,7 +2396,7 @@
        porque:"Un solo calentamiento al día, distinto cada vez. Estos ejercicios con la boca semicerrada ayudan a que las cuerdas cierren sin golpe y sin escape de aire.",
        pasos:cal.pasos,
        cfg:{play:"vocaliz", patron:cal.patron, exDir:1, tol:50, holdMs:500, acorde:"si", letra:"no"}},
-      B_AIRE, B_EE, bloqueFuncion(n), B_NG, B_AMBULANCIA, B_LARGA, B_LIGADAS,
+      B_AIRE, B_EE, bloqueFuncion(n), B_NG, B_CTTA, B_AMBULANCIA, B_LARGA, B_LIGADAS,
       bloqueTerceras("terceras", "terceras5", "Terceras en una quinta", 2, silabasDe("terceras5") + "."),
       bloqueTerceras("terceras8", "tercerasIV", "Terceras completas: subida y bajada", 2,
         "son dos renglones. Primero la SUBIDA: " + silabasDe("terceras") + ". Al terminarla aparece la BAJADA: " + silabasDe("tercerasB") + ". Arriba a la izquierda dice en cuál vas.")
@@ -2501,6 +2506,7 @@
     const b = R.orden[R.i];
     R.enBloque = false; R.resta = b.min*60000;
     S.mode = "rutinaPausa"; S.guia = null; S.memEtapa = null;
+    if(!AN.activo) medidores(null);
     $("prevBtn").hidden = true;
     pintarBloque(b);
     $("badge").textContent = "Paso " + (R.i+1) + " de " + R.orden.length;
@@ -2531,6 +2537,7 @@
       return;
     }
     S.mode = "guia";
+    if(b.tipo === "ctta") medidores("ctta");
     S.guia = {tipo:b.tipo, func:b.func, fase:"inicio", t0:0, ini:0, ult:0, lo:null, hi:null, amb:[], n:0};
     hist.length = 0;
     $("toneBtn").textContent = "Escuchar nota"; $("toneBtn").disabled = true;
@@ -2645,7 +2652,7 @@
   }
 
   /* ---- resumen de la sesión: lo que el micrófono sí puede decir ---- */
-  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[], cancion:[], ligadas:[], an:null, ringNg:null}; }
+  function sesNueva(){ return {notas:[], ataques:[], fallos:0, sirena:null, quiebres:[], inhala:[], sss:[], ee:null, largas:[], terceras:{}, funciones:[], cancion:[], ligadas:[], an:null, ringNg:null, ctta:[]}; }
   const promedio = a => a.length ? a.reduce((x,y)=>x+y, 0)/a.length : null;
   function mediana(a){
     if(!a.length) return null;
@@ -2789,6 +2796,26 @@
           : "En «ng» la lengua toca el paladar atrás; en «a» bájala del todo.");
       }
     }
+    // CT / TA
+    const CT = R.ses.ctta;
+    if(CT.length){
+      const de = id => CT.filter(x=>x.id === id);
+      const mix = de("sube").concat(de("baja")), ct = de("ct"), ta = de("ta");
+      if(mix.length){
+        const g = mix.filter(x=>x.ok).length;
+        if(g/mix.length >= 0.5) add(bien, 2.1, "Mezcla: " + g + " de " + mix.length + " transiciones entre falsete y modal fueron graduales.");
+        else add(mal, 2.2, "Mezcla: solo " + g + " de " + mix.length + " transiciones entre falsete y modal fueron graduales.",
+          "Más despacio y con menos volumen: el brinco suele venir de cambiar de peso de golpe. Imagina un regulador que giras poquito a poquito.");
+      }
+      if(ct.length){
+        const q = ct.filter(x=>x.quiebre).length;
+        if(q === 0) add(bien, 1.5, "Sirenas en falsete sin quiebre (" + ct.length + ").");
+        else add(mal, 1.4, "La sirena en falsete se quebró en " + q + " de " + ct.length + " intentos.",
+          "Al bajar por tu zona de cambio, quita volumen y deja que la voz se adelgace en lugar de cambiar a pecho de golpe.");
+      }
+      if(ta.length && ta.filter(x=>x.ok).length/ta.length < 0.5) add(mal, 1.2, "Al «¡eeey!» le faltó cuerpo.",
+        "Voz de habla firme, como llamando a alguien; densidad no es volumen ni apretar.");
+    }
     // Plan de «El Triste»: legato, vibrato al final, constancia y ring
     if(R.ses.ligadas.length >= 2){
       const L = R.ses.ligadas, prom = promedio(L.map(x=>x.dur)), vf = L.filter(x=>x.vib).length;
@@ -2927,7 +2954,7 @@
   function bloqueFuncion(n){
     const k = ROTA_FUNCIONES[n % ROTA_FUNCIONES.length], F = FUNCIONES[k];
     return {
-      id:"funcion", tipo:"contraste", func:k, fn:F.fn, min:4, titulo:"Función del día: " + F.corto,
+      id:"funcion", tipo:"contraste", func:k, fn:F.fn, min:3, titulo:"Función del día: " + F.corto,
       porque:F.porque,
       pasos:[
         "Suena una nota. La vas a cantar de " + F.modos.length + " formas, una tras otra, unos 3 segundos cada una.",
@@ -3052,6 +3079,166 @@
     return ev;
   }
 
+  /* ---- CT / TA: aligerar la voz sin perder el cuerpo ---- */
+  // TA (tiroaritenoideo) acorta y engrosa las cuerdas: densidad, voz modal.
+  // CT (cricotiroideo) las estira y adelgaza: ligereza, agudos, voz de cabeza.
+  // Indicador acústico: H1–H2, la diferencia entre el 1.º y el 2.º armónico en dB.
+  // Alto = predomina el fundamental (cuerda delgada, falsete); bajo = más
+  // densidad. Es una estimación: depende del micrófono, por eso se compara
+  // contra ti mismo y, en la mezcla, sobre la misma nota.
+  let dbuf = null;
+  function h1h2(f0){
+    if(!analyserDen || !(f0 > 0)) return null;
+    if(!dbuf || dbuf.length !== analyserDen.frequencyBinCount) dbuf = new Float32Array(analyserDen.frequencyBinCount);
+    analyserDen.getFloatFrequencyData(dbuf);
+    const hz = ctx.sampleRate/analyserDen.fftSize;
+    const pico = (f, ancho)=>{
+      let mx = -Infinity;
+      for(let i=Math.max(1, Math.floor(f*(1-ancho)/hz)); i<=Math.min(dbuf.length-1, Math.ceil(f*(1+ancho)/hz)); i++) if(dbuf[i] > mx) mx = dbuf[i];
+      return mx;
+    };
+    const a = pico(f0, 0.08), b = pico(2*f0, 0.05);
+    return isFinite(a) && isFinite(b) ? a - b : null;
+  }
+  // 0 = ligera, 1 = densa (escala aproximada de H1–H2 entre +14 y −4 dB)
+  const densidadDe = h => Math.max(0, Math.min(1, (14 - h)/18));
+
+  function zonasCT(){
+    const T = S.tessFull || S.tess || {lo:40, hi:70}, r = T.hi - T.lo, at = k => Math.round(T.lo + r*k);
+    return {paso:at(0.62), alta:Math.min(T.hi - 1, at(0.85)), media:at(0.45), ta:at(0.4)};
+  }
+
+  const PASOS_CT = [
+    {id:"ct", nombre:"Sirena en falsete que baja", fn:"CT · aligerar",
+     como:"Empieza arriba en falsete, en «u» suave (como un búho), y baja deslizando hasta la zona media sin que la voz cambie de golpe a pecho."},
+    {id:"ta", nombre:"«¡Eeey!» con cuerpo", fn:"TA · densidad",
+     como:"Como cuando llamas a alguien al otro lado del cuarto: «¡eeey!» sostenido, voz de habla firme. Cuerpo sin gritar ni apretar el cuello."},
+    {id:"sube", nombre:"Misma nota: de falsete a modal", fn:"Mezcla",
+     como:"Empieza la nota en falsete, muy ligera, y súmale cuerpo poco a poco hasta tu voz modal, sin que «truene» ni cambie la nota. Unos 4 segundos."},
+    {id:"baja", nombre:"Misma nota: de modal a falsete", fn:"Mezcla",
+     como:"Al revés: empieza con tu voz modal y quítale peso poco a poco hasta el falsete, sin brinco y sin que cambie la nota."}
+  ];
+
+  const B_CTTA = {
+    id:"ctta", titulo:"CT/TA: aligerar y dar cuerpo", min:5, tipo:"ctta", fn:"CT · TA",
+    porque:"Cuando subes «jalando» solo con la voz de pecho (TA) los agudos se sienten pesados. Estos ejercicios enseñan a que el CT tome la nota y el TA ponga solo la densidad necesaria: voz con cuerpo, pero ligera, y agudos con más facilidad. El medidor de Densidad muestra si vas ligero o denso.",
+    pasos:[
+      "Son cuatro ejercicios que se turnan. Antes de cada uno suena tu nota.",
+    ].concat(PASOS_CT.map(p=>p.nombre + ": " + p.como)).concat([
+      "Volumen moderado siempre. Nunca empujes el pecho hacia arriba: si algo raspa, aprieta o cansa, para y descansa. Pide a tu maestra que te vea hacerlos las primeras veces."
+    ])
+  };
+
+  function cttaStep(g, d, ts, dt){
+    const paso = (fase)=>{ g.fase = fase; g.t0 = ts; };
+    const Z = zonasCT();
+    if(g.fase === "listo" || g.fase === "resultado" && ts - g.t0 > 6000){
+      const P = PASOS_CT[g.n % PASOS_CT.length];
+      g.P = P; g.n++; g.fr = []; g.ini = 0; g.ult = 0;
+      g.obj = P.id === "ct" ? Z.alta : P.id === "ta" ? Z.ta : Z.paso;
+      paso("escucha");
+      try{ sound(g.obj, 1300); }catch(e){ reportarFalla(e); }
+      showProbe(g.obj, 0, null, false);
+      $("badge").textContent = P.fn;
+      $("arrow").className = "arrow"; $("arrow").textContent = "♪";
+      $("msg").classList.remove("tuned");
+      $("msgMain").textContent = P.nombre + " · " + midiLabel(g.obj);
+      $("msgSub").textContent = P.como;
+      $("hold").style.width = "0%";
+      return;
+    }
+    if(g.fase === "resultado") return;
+    if(g.fase === "escucha"){ if(ts - g.t0 > 2000) paso("canta"); return; }
+    // canta
+    const m = notaVoz(d);
+    if(m !== null){
+      if(!g.ini) g.ini = ts;
+      g.ult = ts;
+      const h = h1h2(d.f);
+      g.fr.push({t:(ts - g.ini)/1000, m:m, h:h});
+      if(h !== null){
+        const ultimos = g.fr.slice(-6).map(x=>x.h).filter(x=>x !== null);
+        const hm = mediana(ultimos), den = densidadDe(hm);
+        $("mdDenI").style.width = (den*100).toFixed(0) + "%";
+        $("mdDenV").textContent = (den < 0.35 ? "ligera" : den < 0.65 ? "media" : "densa") + " · " + Math.round(hm) + " dB";
+      }
+      const c = g.P.id === "ct" ? null : (m - g.obj)*100;
+      showProbe(g.P.id === "ct" ? Math.round(m) : g.obj, 0, c, c !== null && Math.abs(c) <= 40);
+      $("badge").textContent = g.P.fn;
+      $("msgMain").textContent = g.P.nombre + " · " + ((ts - g.ini)/1000).toFixed(1) + " s";
+    }
+    const dur = g.ini ? (g.ult - g.ini)/1000 : 0;
+    $("hold").style.width = Math.min(100, dur/4*100).toFixed(0) + "%";
+    if(!g.ini){ if(ts - g.t0 > 9000) paso("listo"); return; }
+    if(ts - g.ult < 450) return;
+    if(dur < (g.P.id === "ta" ? 0.8 : 1.5)){ g.ini = 0; g.fr = []; return; }   // muy corto: otra vez
+    const ev = evaluarCT(g.P.id, g.fr, g.obj);
+    if(R.ses) R.ses.ctta.push(ev);
+    $("msg").classList.toggle("tuned", ev.ok);
+    $("arrow").textContent = ev.ok ? "●" : "·";
+    $("msgMain").textContent = ev.titulo;
+    $("msgSub").textContent = ev.detalle;
+    if(navigator.vibrate) navigator.vibrate(ev.ok ? [40,60,40] : 120);
+    paso("resultado");
+  }
+
+  // Busca brincos: la altura salta más de 2.5 semitonos entre cuadros seguidos,
+  // o la densidad cambia más de 8 dB en un cuarto de segundo (la medición de
+  // densidad promedia ~170 ms, así que un cambio brusco se reparte en varios
+  // cuadros). Una transición gradual de 4 s cambia ~1 dB en ese tiempo.
+  function brincos(fr){
+    const out = [], fin = fr.length ? fr[fr.length-1].t : 0;
+    let j = 0;
+    for(let i=1;i<fr.length;i++){
+      const a = fr[i-1], b = fr[i];
+      if(b.t < 0.25 || b.t > fin - 0.2) continue;   // al entrar y al soltar la nota, la medición no es confiable
+      const salto = b.t - a.t <= 0.15 ? Math.abs(b.m - a.m) : 0;
+      while(j < i && fr[j].t < b.t - 0.25) j++;
+      const atras = fr[Math.max(0, j - 1)];
+      const dh = b.h !== null && atras.h !== null && atras.t >= 0.25 && b.t - atras.t <= 0.4 ? Math.abs(b.h - atras.h) : 0;
+      if((salto > 2.5 && salto < 9) || dh > 8) out.push(b);
+    }
+    // varios cuadros seguidos del mismo brinco cuentan como uno
+    return out.filter((x, i)=>i === 0 || x.t - out[i-1].t > 0.3);
+  }
+
+  function evaluarCT(id, fr, obj){
+    const hs = fr.map(x=>x.h).filter(x=>x !== null);
+    const parte = (a, b)=>{ const n = fr.length, v = fr.slice(Math.floor(n*a), Math.max(Math.floor(n*a)+1, Math.floor(n*b))).map(x=>x.h).filter(x=>x !== null); return v.length ? mediana(v) : null; };
+    const ev = {id:id, ok:false, titulo:"", detalle:""};
+    if(id === "ct"){
+      const desde = fr[0].m, hasta = fr[fr.length-1].m, bajo = desde - hasta;
+      const br = brincos(fr), ligera = hs.length ? densidadDe(mediana(hs)) < 0.5 : false;
+      ev.quiebre = br.length > 0; ev.bajo = bajo;
+      ev.ok = bajo >= 4 && !ev.quiebre;
+      ev.titulo = bajo < 4 ? "Baja más: desliza unos cuantos tonos" : ev.quiebre ? "Hubo un brinco" : "¡Bajaste sin quiebre!";
+      ev.detalle = midiLabel(desde) + " → " + midiLabel(hasta)
+        + (ev.quiebre ? " · brinco cerca de " + midiLabel(br[0].m) + ": pasa por ahí más despacio y con menos volumen" : " · sin quiebre")
+        + (ligera ? " · ligera ✓" : " · se puso pesada: más falsete, menos empuje");
+    }else if(id === "ta"){
+      const h = hs.length ? mediana(hs) : null, den = h === null ? 0 : densidadDe(h);
+      const cs = fr.map(x=>(x.m - obj)*100), c = mediana(cs);
+      ev.densidad = den;
+      ev.ok = den >= 0.5 && Math.abs(c) <= 50;
+      ev.titulo = den >= 0.5 ? "Con cuerpo ✓" : "Suena ligera o con aire";
+      ev.detalle = "Densidad " + Math.round(den*100) + " %" + (h !== null ? " (H1–H2 " + Math.round(h) + " dB)" : "")
+        + (Math.abs(c) <= 50 ? " · en la nota" : " · se fue " + (c < 0 ? "abajo" : "arriba") + " " + Math.abs(Math.round(c)) + " ¢")
+        + (den >= 0.5 ? "" : " · llama a alguien, voz de habla firme");
+    }else{
+      const ini = parte(0, 0.25), fin = parte(0.75, 1), br = brincos(fr);
+      const cambio = ini !== null && fin !== null ? (id === "sube" ? ini - fin : fin - ini) : 0;   // positivo = en la dirección pedida
+      const cs = fr.map(x=>(x.m - obj)*100), s = promedio(cs), sd = Math.sqrt(Math.max(0, promedio(cs.map(x=>x*x)) - s*s));
+      ev.cambio = cambio; ev.gradual = br.length === 0; ev.estable = sd <= 35;
+      ev.ok = cambio >= 3 && ev.gradual && ev.estable;
+      ev.titulo = cambio < 3 ? (id === "sube" ? "Casi no sumaste cuerpo" : "Casi no quitaste peso")
+        : !ev.gradual ? "Hubo un brinco: más despacio" : "¡Transición gradual!";
+      ev.detalle = (id === "sube" ? "Cuerpo sumado: " : "Peso quitado: ") + Math.round(Math.max(0, cambio)) + " dB"
+        + (ev.gradual ? " · sin brinco" : " · brinco a los " + br[0].t.toFixed(1) + " s")
+        + (ev.estable ? " · nota estable" : " · la nota se movió ±" + Math.round(sd) + " ¢");
+    }
+    return ev;
+  }
+
   /* ---- bloques guiados: el micrófono como testigo ---- */
   // Si un ejercicio guiado truena, decirlo en pantalla (con el error, para poder
   // arreglarlo) en lugar de quedarse congelado en el último mensaje.
@@ -3089,6 +3276,7 @@
     else if(g.tipo === "ee") eeStep(g, d, ts, dt);
     else if(g.tipo === "larga") largaStep(g, d, ts, dt);
     else if(g.tipo === "contraste") contrasteStep(g, d, ts, dt);
+    else if(g.tipo === "ctta") cttaStep(g, d, ts, dt);
   }
 
   function notaVoz(d){
@@ -3856,6 +4044,14 @@
     AN.activo = true; AN.fr = []; AN.t0 = performance.now(); AN.ultVoz = -1; AN.iniFrase = -1;
     AN.frases = []; AN.vivo = {}; AN.ultVib = 0;
     $("medidores").hidden = false;
+    medidores("analisis");
+  }
+  // Qué medidores se ven: los del análisis de canto o el de densidad (CT/TA).
+  function medidores(cual){
+    $("medidores").hidden = !cual;
+    document.querySelectorAll(".mdAn").forEach(el=>{ el.hidden = cual !== "analisis"; });
+    $("mdDenRow").hidden = cual !== "ctta";
+    if(cual === "ctta"){ $("mdDenI").style.width = "0%"; $("mdDenV").textContent = "—"; }
   }
   function anParar(){ AN.activo = false; $("medidores").hidden = true; }
 
@@ -4385,7 +4581,7 @@
     // Todo lo que pertenece al contexto de audio cerrado se rehace con el
     // siguiente: conectar a un nodo viejo falla y deja la app sin sonido.
     master = null; pWave = null; gWave = null; noiseB = null; jitB = null;
-    analyser = null; analyserRaw = null; analyserFino = null;
+    analyser = null; analyserRaw = null; analyserFino = null; analyserDen = null;
     const eraRutina = R.activa;
     if(eraRutina) rutinaSalir();
     $("startBtn").textContent = "Práctica libre";
@@ -4394,6 +4590,7 @@
     $("toneBtn").classList.remove("primary");
     $("toneBtn").disabled = true; $("skipBtn").disabled = true;
     $("prevBtn").hidden = true;
+    medidores(null);
     $("hoy").hidden = false;
     $("msg").classList.remove("tuned");
     $("msgMain").textContent = main || "Sesión detenida";

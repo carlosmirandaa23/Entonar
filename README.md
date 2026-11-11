@@ -2,7 +2,7 @@
 
 Entrenador de afinación y lectura para la voz, en una sola página (`index.html`). El micrófono se procesa en el dispositivo.
 
-## Rutina de hoy (33 min, 38 con tu canción)
+## Rutina de hoy (36 min, 41 con tu canción)
 
 Está organizada alrededor de las **4 funciones de la voz**:
 
@@ -85,6 +85,22 @@ Con una canción cargada, la rutina agrega el bloque **Tu canción** (5 min). En
 - Cada nota es `[midi escrito, duración en tiempos, sílaba, inicio en tiempos desde el comienzo de la frase]`.
 - `pulso` es el tiempo del compás en que empieza la frase, contado desde 0.
 - Los acordes van como `[tiempo, nombre]`, con nombres como C, Em, G7 o Dm7.
+
+## CT/TA: aligerar y dar cuerpo
+
+Bloque de 5 min en la rutina. Trabaja el equilibrio entre dos músculos: el **TA** (tiroaritenoideo), que da densidad, la voz modal, y el **CT** (cricotiroideo), que da ligereza y facilidad en los agudos. Son cuatro ejercicios que se turnan:
+
+| Ejercicio | Trabaja | Qué revisa la app |
+|---|---|---|
+| Sirena en falsete que baja («u») | CT | Que baje unos tonos sin quiebre y siga ligera |
+| «¡Eeey!» con cuerpo | TA | Densidad (H1–H2 bajo) y que esté en la nota |
+| Misma nota: de falsete a modal | Mezcla | Que el cuerpo se sume gradual, sin brinco y sin mover la nota |
+| Misma nota: de modal a falsete | Mezcla | Que el peso se quite gradual |
+
+- **Indicador de densidad:** H1–H2, la diferencia en dB entre el 1.º y el 2.º armónico. Se mide con un analizador de 8192 puntos (unos 6 Hz de resolución), para separar bien los armónicos en voces graves.
+- **Brincos:** cuentan los saltos de más de 2.5 semitonos entre cuadros, o los cambios de densidad de más de 8 dB en 0.25 s. No se buscan al entrar ni al soltar la nota.
+- **Notas:** se ubican según tu rango. La mezcla cae en tu zona de cambio, al 62 % del rango.
+- **Es una estimación acústica:** depende del micrófono. Lo que vale es compararte contra ti mismo.
 
 ## Análisis de canto
 
